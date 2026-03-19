@@ -75,16 +75,6 @@ command = "pkill waybar; sleep 0.2; waybar & disown"
 
 ## Dependencies
 
-Luncher relies on the following key dependencies:
-
-- **calloop** - Event loop abstraction
-- **smithay-client-toolkit** - Wayland client utilities
-- **wayland-client & wayland-protocols** - Wayland communication
-- **fontdue** - Font rendering
-- **nucleo** - Fuzzy matching for search
-- **serde** - Configuration serialization
-- **dirs** - Directory detection
-
 See `Cargo.toml` for the complete dependency list.
 
 ## Development

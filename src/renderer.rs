@@ -1,4 +1,12 @@
-use fontdue::{Font, FontSettings};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::fs::File;
+
+use memmap2::Mmap;
+use swash::scale::image::Image;
+use swash::scale::{Render, ScaleContext, Source, StrikeWith};
+use swash::zeno::Format;
+use swash::{CacheKey, FontRef, GlyphId};
 
 const BG: u32 = 0xFF1E1E2E;
 const FG: u32 = 0xE6E6E6FF;
@@ -13,8 +21,77 @@ const ROW_H: u32 = 35;
 const INPUT_H: u32 = 45;
 const PAD_X: u32 = 16;
 
+const PRIMARY_FONT_PATHS: &[&str] = &[
+    "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+    "/usr/share/fonts/TTF/NotoSans-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+    "/usr/share/fonts/noto-sans/NotoSans-Regular.ttf",
+    "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
+];
+
+const CJK_FONT_PATHS: &[&str] = &[
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansSC-Regular.otf",
+    "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/OTF/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/adobe-source-han-sans/SourceHanSans-Regular.ttc",
+];
+
+/// Owned font data backed by a memory-mapped file.
+struct MappedFont {
+    _mmap: Mmap,
+    offset: u32,
+    key: CacheKey,
+}
+
+impl MappedFont {
+    fn open(path: &str) -> Option<Self> {
+        let file = File::open(path).ok()?;
+        let mmap = unsafe { Mmap::map(&file).ok()? };
+        let font_ref = FontRef::from_index(unsafe { Self::mmap_as_static(&mmap) }, 0)?;
+        Some(Self {
+            _mmap: mmap,
+            offset: font_ref.offset,
+            key: font_ref.key,
+        })
+    }
+
+    fn as_ref(&self) -> FontRef<'_> {
+        FontRef {
+            data: self.data(),
+            offset: self.offset,
+            key: self.key,
+        }
+    }
+
+    fn data(&self) -> &[u8] {
+        &self._mmap
+    }
+
+    /// Extend the lifetime of the mmap slice for initial parsing only.
+    /// SAFETY: caller must ensure the Mmap outlives the returned reference.
+    unsafe fn mmap_as_static(mmap: &Mmap) -> &'static [u8] {
+        unsafe { std::mem::transmute::<&[u8], &'static [u8]>(mmap.as_ref()) }
+    }
+}
+
+/// Cached rasterized glyph bitmap.
+struct CachedGlyph {
+    placement_left: i32,
+    placement_top: i32,
+    width: u32,
+    height: u32,
+    advance: f32,
+    data: Vec<u8>,
+}
+
 pub struct Renderer {
-    font: Font,
+    primary: MappedFont,
+    cjk: Option<MappedFont>,
+    context: RefCell<ScaleContext>,
+    cache: RefCell<HashMap<(char, u32), CachedGlyph>>,
     pub width: u32,
     pub height: u32,
     pub scale: f32,
@@ -23,18 +100,13 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(width: u32, height: u32, scale: f32) -> Self {
-        let font_paths = [
-            "/usr/share/fonts/noto/NotoSans-Regular.ttf",
-            "/usr/share/fonts/TTF/NotoSans-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-            "/usr/share/fonts/noto-sans/NotoSans-Regular.ttf",
-            "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
-        ];
-        let font_data = font_paths
+        let primary = PRIMARY_FONT_PATHS
             .iter()
-            .find_map(|p| std::fs::read(p).ok())
+            .find_map(|p| MappedFont::open(p))
             .unwrap_or_else(|| panic!("No font found. Install noto-fonts."));
-        let font = Font::from_bytes(font_data, FontSettings::default()).unwrap();
+
+        let cjk = CJK_FONT_PATHS.iter().find_map(|p| MappedFont::open(p));
+
         let max_visible_rows: u32 = {
             let row_h = (ROW_H as f32 * scale).round() as u32;
             let input_h = (INPUT_H as f32 * scale).round() as u32;
@@ -42,12 +114,80 @@ impl Renderer {
         };
 
         Self {
-            font,
+            primary,
+            cjk,
+            context: RefCell::new(ScaleContext::new()),
+            cache: RefCell::new(HashMap::new()),
             width,
             height,
             scale,
-            max_visible_rows: max_visible_rows,
+            max_visible_rows,
         }
+    }
+
+    /// Pick the font that has a glyph for `ch`, returning (FontRef, GlyphId).
+    fn resolve_glyph(&self, ch: char) -> (FontRef<'_>, GlyphId) {
+        let primary = self.primary.as_ref();
+        let gid = primary.charmap().map(ch);
+        if gid != 0 {
+            return (primary, gid);
+        }
+        if let Some(cjk) = &self.cjk {
+            let cjk_ref = cjk.as_ref();
+            let gid = cjk_ref.charmap().map(ch);
+            if gid != 0 {
+                return (cjk_ref, gid);
+            }
+        }
+        (primary, 0)
+    }
+
+    /// Rasterize a glyph (or return from cache).
+    fn rasterize_glyph(&self, ch: char, size: f32) -> std::cell::Ref<'_, CachedGlyph> {
+        let size_key = size.to_bits();
+        let key = (ch, size_key);
+
+        {
+            let has = self.cache.borrow().contains_key(&key);
+            if !has {
+                let (font_ref, gid) = self.resolve_glyph(ch);
+                let advance = font_ref.glyph_metrics(&[]).scale(size).advance_width(gid);
+
+                let mut ctx = self.context.borrow_mut();
+                let mut scaler = ctx.builder(font_ref).size(size).hint(true).build();
+
+                let image: Option<Image> = Render::new(&[
+                    Source::ColorOutline(0),
+                    Source::ColorBitmap(StrikeWith::BestFit),
+                    Source::Outline,
+                ])
+                .format(Format::Alpha)
+                .render(&mut scaler, gid);
+
+                let cached = if let Some(img) = image {
+                    CachedGlyph {
+                        placement_left: img.placement.left,
+                        placement_top: img.placement.top,
+                        width: img.placement.width,
+                        height: img.placement.height,
+                        advance,
+                        data: img.data,
+                    }
+                } else {
+                    CachedGlyph {
+                        placement_left: 0,
+                        placement_top: 0,
+                        width: 0,
+                        height: 0,
+                        advance,
+                        data: Vec::new(),
+                    }
+                };
+                self.cache.borrow_mut().insert(key, cached);
+            }
+        }
+
+        std::cell::Ref::map(self.cache.borrow(), |c| c.get(&key).unwrap())
     }
 
     pub fn render(
@@ -120,19 +260,23 @@ impl Renderer {
         size: f32,
     ) -> u32 {
         let size = size.round();
+        let ascent = {
+            let font_ref = self.primary.as_ref();
+            font_ref.metrics(&[]).scale(size).ascent
+        };
 
         let mut cx = x as i32;
         let [_, fg_r, fg_g, fg_b] = color.to_be_bytes();
 
         for ch in text.chars() {
-            let (metrics, bitmap) = self.font.rasterize(ch, size);
+            let glyph = self.rasterize_glyph(ch, size);
 
-            let glyph_x = cx + metrics.xmin;
-            let glyph_y = y as i32 + (size as i32 - metrics.height as i32 - metrics.ymin);
+            let glyph_x = cx + glyph.placement_left;
+            let glyph_y = y as i32 + ascent as i32 - glyph.placement_top;
 
-            for gy in 0..metrics.height {
-                for gx in 0..metrics.width {
-                    let coverage = bitmap[gy * metrics.width + gx];
+            for gy in 0..glyph.height {
+                for gx in 0..glyph.width {
+                    let coverage = glyph.data[(gy * glyph.width + gx) as usize];
                     if coverage == 0 {
                         continue;
                     }
@@ -161,7 +305,7 @@ impl Renderer {
                 }
             }
 
-            cx += metrics.advance_width as i32;
+            cx += glyph.advance as i32;
         }
 
         cx.max(x as i32) as u32
