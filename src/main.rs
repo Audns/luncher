@@ -3,6 +3,7 @@ mod executor;
 mod renderer;
 mod search;
 mod state;
+mod stdin;
 
 use calloop::EventLoop;
 use calloop_wayland_source::WaylandSource;

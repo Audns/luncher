@@ -2,6 +2,7 @@ use crate::{
     config::{Config, Scripts},
     renderer::Renderer,
     search::{FuzzySearch, LauncherItem},
+    stdin,
 };
 use calloop::LoopHandle;
 use smithay_client_toolkit::{
@@ -53,6 +54,7 @@ pub struct AppState {
     pub renderer: Renderer,
     pub loop_handle: LoopHandle<'static, AppState>,
     pub visible: usize,
+    pub dmenu_mode: bool,
 }
 
 impl AppState {
@@ -62,7 +64,6 @@ impl AppState {
         loop_handle: LoopHandle<'static, AppState>,
     ) -> Self {
         let cfg = Config::load();
-        let scripts = Scripts::load();
         let scale = cfg.scale;
         let logical_width = cfg.window.width;
         let logical_height = cfg.window.height;
@@ -94,11 +95,18 @@ impl AppState {
 
         let pool = SlotPool::new((phys_w * phys_h * 4) as usize, &shm).unwrap();
 
-        let items: Vec<LauncherItem> = scripts
-            .entries
-            .into_iter()
-            .map(|(name, entry)| LauncherItem::new(name, entry))
-            .collect();
+        let (items, dmenu_mode) = if let Some(stdin_items) = stdin::read_stdin() {
+            (stdin_items, true)
+        } else {
+            let scripts = Scripts::load();
+            let items: Vec<LauncherItem> = scripts
+                .entries
+                .into_iter()
+                .map(|(name, entry)| LauncherItem::new(name, entry))
+                .collect();
+            (items, false)
+        };
+
         let mut search = FuzzySearch::new(items);
         search.update("");
 
@@ -127,6 +135,7 @@ impl AppState {
             renderer: renderer,
             loop_handle,
             visible,
+            dmenu_mode,
         }
     }
 
@@ -207,7 +216,13 @@ impl AppState {
 
             Keysym::Return | Keysym::KP_Enter => {
                 if let Some(item) = self.search.results.get(self.selected) {
-                    crate::executor::execute(&item.entry.command);
+                    if self.dmenu_mode {
+                        // dmenu mode — print the selected line to stdout
+                        crate::executor::print_selection(&item.name);
+                    } else {
+                        // normal mode — execute the command
+                        crate::executor::execute(&item.entry.command);
+                    }
                 }
                 self.exit = true;
             }

@@ -243,8 +243,10 @@ impl Renderer {
             }
             let text_y = row_y + row_h.saturating_sub(font_size as u32) / 2 - 3;
             let name_end = self.draw_text(&mut buf, &item.name, pad_x, text_y, FG, font_size);
-            let cmd = format!(" {}", item.entry.command);
-            self.draw_text(&mut buf, &cmd, name_end + 8, text_y, FG_DIM, font_size);
+            if item.entry.command != item.name {
+                let cmd = format!("  {}", item.entry.command);
+                self.draw_text(&mut buf, &cmd, name_end + 8, text_y, FG_DIM, font_size);
+            }
         }
 
         buf

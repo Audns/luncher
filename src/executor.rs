@@ -1,7 +1,5 @@
-use std::process::Command;
-
 pub fn execute(command: &str) {
-    Command::new("/usr/bin/bash")
+    std::process::Command::new("/usr/bin/bash")
         .arg("-c")
         .arg(command)
         .stdin(std::process::Stdio::null())
@@ -9,4 +7,8 @@ pub fn execute(command: &str) {
         .stderr(std::process::Stdio::null())
         .spawn()
         .ok();
+}
+
+pub fn print_selection(value: &str) {
+    println!("{}", value);
 }
