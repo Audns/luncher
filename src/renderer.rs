@@ -16,10 +16,11 @@ const SEL_BG: u32 = 0x15C0CAF5;
 const LINE: u32 = 0xFF2A2A3E;
 
 const FONT_SIZE: f32 = 22.0;
-const HINT_SIZE: f32 = 25.0;
-const ROW_H: u32 = 35;
+const HINT_SIZE: f32 = 22.0;
+const ROW_H: u32 = 58;
 const INPUT_H: u32 = 45;
 const PAD_X: u32 = 16;
+const INPUT_LETTER_SPACING: f32 = 1.0;
 
 const PRIMARY_FONT_PATHS: &[&str] = &[
     "/usr/share/fonts/noto/NotoSans-Regular.ttf",
@@ -39,7 +40,6 @@ const CJK_FONT_PATHS: &[&str] = &[
     "/usr/share/fonts/adobe-source-han-sans/SourceHanSans-Regular.ttc",
 ];
 
-/// Owned font data backed by a memory-mapped file.
 struct MappedFont {
     _mmap: Mmap,
     offset: u32,
@@ -70,14 +70,11 @@ impl MappedFont {
         &self._mmap
     }
 
-    /// Extend the lifetime of the mmap slice for initial parsing only.
-    /// SAFETY: caller must ensure the Mmap outlives the returned reference.
     unsafe fn mmap_as_static(mmap: &Mmap) -> &'static [u8] {
         unsafe { std::mem::transmute::<&[u8], &'static [u8]>(mmap.as_ref()) }
     }
 }
 
-/// Cached rasterized glyph bitmap.
 struct CachedGlyph {
     placement_left: i32,
     placement_top: i32,
@@ -107,10 +104,10 @@ impl Renderer {
 
         let cjk = CJK_FONT_PATHS.iter().find_map(|p| MappedFont::open(p));
 
-        let max_visible_rows: u32 = {
+        let max_visible_rows = {
             let row_h = (ROW_H as f32 * scale).round() as u32;
             let input_h = (INPUT_H as f32 * scale).round() as u32;
-            (height.saturating_sub(input_h + 1) / row_h) as u32
+            height.saturating_sub(input_h + 1) / row_h
         };
 
         Self {
@@ -125,7 +122,6 @@ impl Renderer {
         }
     }
 
-    /// Pick the font that has a glyph for `ch`, returning (FontRef, GlyphId).
     fn resolve_glyph(&self, ch: char) -> (FontRef<'_>, GlyphId) {
         let primary = self.primary.as_ref();
         let gid = primary.charmap().map(ch);
@@ -142,51 +138,42 @@ impl Renderer {
         (primary, 0)
     }
 
-    /// Rasterize a glyph (or return from cache).
     fn rasterize_glyph(&self, ch: char, size: f32) -> std::cell::Ref<'_, CachedGlyph> {
-        let size_key = size.to_bits();
-        let key = (ch, size_key);
+        let key = (ch, size.to_bits());
+        if !self.cache.borrow().contains_key(&key) {
+            let (font_ref, gid) = self.resolve_glyph(ch);
+            let advance = font_ref.glyph_metrics(&[]).scale(size).advance_width(gid);
+            let mut ctx = self.context.borrow_mut();
+            let mut scaler = ctx.builder(font_ref).size(size).hint(true).build();
+            let image: Option<Image> = Render::new(&[
+                Source::ColorOutline(0),
+                Source::ColorBitmap(StrikeWith::BestFit),
+                Source::Outline,
+            ])
+            .format(Format::Alpha)
+            .render(&mut scaler, gid);
 
-        {
-            let has = self.cache.borrow().contains_key(&key);
-            if !has {
-                let (font_ref, gid) = self.resolve_glyph(ch);
-                let advance = font_ref.glyph_metrics(&[]).scale(size).advance_width(gid);
-
-                let mut ctx = self.context.borrow_mut();
-                let mut scaler = ctx.builder(font_ref).size(size).hint(true).build();
-
-                let image: Option<Image> = Render::new(&[
-                    Source::ColorOutline(0),
-                    Source::ColorBitmap(StrikeWith::BestFit),
-                    Source::Outline,
-                ])
-                .format(Format::Alpha)
-                .render(&mut scaler, gid);
-
-                let cached = if let Some(img) = image {
-                    CachedGlyph {
-                        placement_left: img.placement.left,
-                        placement_top: img.placement.top,
-                        width: img.placement.width,
-                        height: img.placement.height,
-                        advance,
-                        data: img.data,
-                    }
-                } else {
-                    CachedGlyph {
-                        placement_left: 0,
-                        placement_top: 0,
-                        width: 0,
-                        height: 0,
-                        advance,
-                        data: Vec::new(),
-                    }
-                };
-                self.cache.borrow_mut().insert(key, cached);
-            }
+            let cached = if let Some(img) = image {
+                CachedGlyph {
+                    placement_left: img.placement.left,
+                    placement_top: img.placement.top,
+                    width: img.placement.width,
+                    height: img.placement.height,
+                    advance,
+                    data: img.data,
+                }
+            } else {
+                CachedGlyph {
+                    placement_left: 0,
+                    placement_top: 0,
+                    width: 0,
+                    height: 0,
+                    advance,
+                    data: Vec::new(),
+                }
+            };
+            self.cache.borrow_mut().insert(key, cached);
         }
-
         std::cell::Ref::map(self.cache.borrow(), |c| c.get(&key).unwrap())
     }
 
@@ -196,56 +183,99 @@ impl Renderer {
         results: &[crate::search::LauncherItem],
         selected: usize,
         visible: usize,
+        cursor: usize,
     ) -> Vec<u32> {
         let mut buf = vec![BG; (self.width * self.height) as usize];
 
         let font_size = (FONT_SIZE * self.scale).round();
         let hint_size = (HINT_SIZE * self.scale).round();
+        let meta_size = (font_size * 0.78).round();
 
         let row_h = (ROW_H as f32 * self.scale).round() as u32;
         let input_h = (INPUT_H as f32 * self.scale).round() as u32;
         let pad_x = (PAD_X as f32 * self.scale).round() as u32;
         let text_x = pad_x + (20.0 * self.scale).round() as u32;
+        let gap = (8.0 * self.scale).round() as u32;
 
-        let text_y = input_h.saturating_sub(font_size as u32) / 2;
-        let cursor_symbol = "|";
-        let mut cursor_x = text_x;
+        // ── Input row ─────────────────────────────────────────────────────
+        let input_text_y = input_h.saturating_sub(font_size as u32) / 2;
+        let metrics = self.primary.as_ref().metrics(&[]).scale(font_size);
+        let ascent = metrics.ascent.round() as u32;
+        let descent = metrics.descent.abs().round() as u32;
+        let cursor_h = ascent + descent;
+        let cursor_w = (1.5 * self.scale).round().max(1.0) as u32;
 
         if query.is_empty() {
-            self.draw_text(&mut buf, "", text_x, text_y, FG_HINT, hint_size);
+            self.draw_text(
+                &mut buf,
+                "",
+                text_x,
+                input_text_y,
+                FG_HINT,
+                hint_size,
+                INPUT_LETTER_SPACING,
+            );
+            self.draw_rect(&mut buf, text_x, input_text_y, cursor_w, cursor_h, FG);
         } else {
-            let text_end = self.draw_text(&mut buf, query, text_x, text_y, FG, font_size);
-            cursor_x = text_end - 4;
+            let before = &query[..cursor];
+            let after = &query[cursor..];
+            let cursor_x = self.draw_text(
+                &mut buf,
+                before,
+                text_x,
+                input_text_y,
+                FG,
+                font_size,
+                INPUT_LETTER_SPACING,
+            );
+
+            self.draw_text(
+                &mut buf,
+                after,
+                cursor_x,
+                input_text_y,
+                FG,
+                font_size,
+                INPUT_LETTER_SPACING,
+            );
+            self.draw_rect(&mut buf, cursor_x, input_text_y, cursor_w, cursor_h, FG);
         }
-
-        self.draw_text(&mut buf, cursor_symbol, cursor_x, text_y, FG, font_size);
-
-        // Separator
+        // ── Separator ─────────────────────────────────────────────────────
         self.draw_rect(&mut buf, 0, input_h, self.width, 1, LINE);
 
-        // Result rows
-        let max_visible_rows = (self.height.saturating_sub(input_h + 1) / row_h) as usize;
-        for (i, item) in results
-            .iter()
-            .skip(visible)
-            .take(max_visible_rows)
-            .enumerate()
-        {
-            let row_y = input_h + 1 + i as u32 * row_h;
+        let max_visible = (self.height.saturating_sub(input_h + 1) / row_h) as usize;
 
+        for (i, item) in results.iter().skip(visible).take(max_visible).enumerate() {
+            let row_y = input_h + 1 + i as u32 * row_h;
             let real_index = visible + i;
-            if real_index == selected {
-                self.draw_rect(&mut buf, 0, row_y, self.width, row_h, SEL_BG);
-            }
 
             if row_y + row_h > self.height {
                 break;
             }
-            let text_y = row_y + row_h.saturating_sub(font_size as u32) / 2 - 3;
-            let name_end = self.draw_text(&mut buf, &item.name, pad_x, text_y, FG, font_size);
+
+            if real_index == selected {
+                self.draw_rect(&mut buf, 0, row_y, self.width, row_h, SEL_BG);
+            }
+
+            let name_y = row_y + (4.0 * self.scale).round() as u32;
+            let name_end = self.draw_text(&mut buf, &item.name, pad_x, name_y, FG, font_size, 0.0);
+
             if item.entry.command != item.name {
                 let cmd = format!("  {}", item.entry.command);
-                self.draw_text(&mut buf, &cmd, name_end + 8, text_y, FG_DIM, font_size);
+                self.draw_text(&mut buf, &cmd, name_end + 4, name_y, FG_DIM, font_size, 0.0);
+            }
+            let meta_y = name_y + font_size as u32 + (4.0 * self.scale).round() as u32;
+            let mut mx = pad_x;
+
+            for tag in &item.entry.tag {
+                let label = format!("#{} ", tag);
+                mx = self.draw_text(&mut buf, &label, mx, meta_y, FG_DIM, meta_size, 0.0);
+                mx += gap;
+            }
+
+            let _ = mx;
+            if i + 1 < max_visible {
+                self.draw_rect(&mut buf, 0, row_y + row_h - 1, self.width, 1, 0x10C0CAF5);
             }
         }
 
@@ -260,19 +290,22 @@ impl Renderer {
         y: u32,
         color: u32,
         size: f32,
+        letter_spacing: f32,
     ) -> u32 {
         let size = size.round();
-        let ascent = {
-            let font_ref = self.primary.as_ref();
-            font_ref.metrics(&[]).scale(size).ascent
-        };
-
+        let ascent = self.primary.as_ref().metrics(&[]).scale(size).ascent;
         let mut cx = x as i32;
         let [_, fg_r, fg_g, fg_b] = color.to_be_bytes();
 
         for ch in text.chars() {
+            if ch.is_control() {
+                if ch == '\t' {
+                    let space_glyph = self.rasterize_glyph(' ', size);
+                    cx += space_glyph.advance as i32 * 4;
+                }
+                continue;
+            }
             let glyph = self.rasterize_glyph(ch, size);
-
             let glyph_x = cx + glyph.placement_left;
             let glyph_y = y as i32 + ascent as i32 - glyph.placement_top;
 
@@ -285,7 +318,6 @@ impl Renderer {
 
                     let px = glyph_x + gx as i32;
                     let py = glyph_y + gy as i32;
-
                     if px < 0 || py < 0 {
                         continue;
                     }
@@ -306,10 +338,8 @@ impl Renderer {
                     buf[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
                 }
             }
-
-            cx += glyph.advance as i32;
+            cx += glyph.advance as i32 + (letter_spacing * self.scale).round() as i32;
         }
-
         cx.max(x as i32) as u32
     }
 

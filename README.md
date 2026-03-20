@@ -68,8 +68,10 @@ height = 800
 Luncher uses a TOML configuration file located at `~/.config/luncher/scripts.toml` (or XDG_CONFIG_HOME equivalent).
 
 ```toml
-[reload-waybar]
+[scripts]
+name = "reload waybar"
 command = "pkill waybar; sleep 0.2; waybar & disown"
+tag = ["sys", "waybar"]
 
 ```
 

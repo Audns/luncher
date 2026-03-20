@@ -2,7 +2,6 @@ use crate::config::Entry;
 use crate::search::LauncherItem;
 use std::io::{self, BufRead};
 
-/// Returns Some(items) if stdin is piped, None if stdin is a terminal
 pub fn read_stdin() -> Option<Vec<LauncherItem>> {
     if atty::is(atty::Stream::Stdin) {
         return None;
@@ -15,9 +14,15 @@ pub fn read_stdin() -> Option<Vec<LauncherItem>> {
         .filter_map(|l| l.ok())
         .filter(|l| !l.trim().is_empty())
         .map(|line| {
+            let display = if let Some(tab_pos) = line.find('\t') {
+                line[tab_pos + 1..].to_string()
+            } else {
+                line.clone()
+            };
             LauncherItem::new(
-                line.clone(),
+                display,
                 Entry {
+                    name: line.clone(),
                     command: line,
                     tag: vec![],
                 },

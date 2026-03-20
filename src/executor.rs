@@ -1,14 +1,20 @@
+use std::process::{Command, Stdio};
+
 pub fn execute(command: &str) {
-    std::process::Command::new("/usr/bin/bash")
+    Command::new("/usr/bin/bash")
         .arg("-c")
         .arg(command)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
         .ok();
 }
 
 pub fn print_selection(value: &str) {
-    println!("{}", value);
+    use std::io::Write;
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+    writeln!(handle, "{}", value).ok();
+    handle.flush().ok();
 }

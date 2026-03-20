@@ -59,6 +59,7 @@ impl Default for Config {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Entry {
+    pub name: String,
     pub command: String,
     #[serde(default)]
     pub tag: Vec<String>,

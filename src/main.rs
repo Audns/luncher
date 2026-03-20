@@ -5,6 +5,8 @@ mod search;
 mod state;
 mod stdin;
 
+use std::io::Write;
+
 use calloop::EventLoop;
 use calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::reexports::client::{Connection, globals::registry_queue_init};
@@ -48,4 +50,5 @@ fn main() {
             app.draw(&app.qh.clone());
         }
     }
+    std::io::stdout().flush().ok();
 }

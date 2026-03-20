@@ -55,6 +55,7 @@ pub struct AppState {
     pub loop_handle: LoopHandle<'static, AppState>,
     pub visible: usize,
     pub dmenu_mode: bool,
+    pub cursor: usize,
 }
 
 impl AppState {
@@ -136,6 +137,7 @@ impl AppState {
             loop_handle,
             visible,
             dmenu_mode,
+            cursor: 0,
         }
     }
 
@@ -147,6 +149,7 @@ impl AppState {
             &self.search.results,
             self.selected,
             self.visible,
+            self.cursor,
         );
 
         let expected = (self.width * self.height * 4) as usize;
@@ -211,91 +214,145 @@ impl AppState {
         let alt = self.modifiers.alt;
 
         match event.keysym {
+            // ── Exit ──────────────────────────────────────────────────────
             Keysym::Escape => self.exit = true,
             Keysym::c if ctrl => self.exit = true,
 
+            // ── Execute ───────────────────────────────────────────────────
             Keysym::Return | Keysym::KP_Enter => {
                 if let Some(item) = self.search.results.get(self.selected) {
                     if self.dmenu_mode {
-                        // dmenu mode — print the selected line to stdout
-                        crate::executor::print_selection(&item.name);
+                        crate::executor::print_selection(&item.entry.command);
                     } else {
-                        // normal mode — execute the command
                         crate::executor::execute(&item.entry.command);
                     }
                 }
                 self.exit = true;
             }
 
+            // ── Result navigation ─────────────────────────────────────────
             Keysym::Up => {
                 self.selected = self.selected.saturating_sub(1);
-                self.update_scroll();
+                if self.selected < self.visible {
+                    self.visible = self.selected;
+                }
                 self.needs_redraw = true;
             }
             Keysym::Down => {
                 let max = self.search.results.len().saturating_sub(1);
                 self.selected = (self.selected + 1).min(max);
-                self.update_scroll();
+                let page = self.renderer.max_visible_rows as usize;
+                if self.selected >= self.visible + page {
+                    self.visible = self.selected + 1 - page;
+                }
                 self.needs_redraw = true;
             }
             Keysym::p if ctrl => {
                 self.selected = self.selected.saturating_sub(1);
-                self.update_scroll();
+                if self.selected < self.visible {
+                    self.visible = self.selected;
+                }
                 self.needs_redraw = true;
             }
             Keysym::n if ctrl => {
                 let max = self.search.results.len().saturating_sub(1);
+                let page = self.renderer.max_visible_rows as usize;
                 self.selected = (self.selected + 1).min(max);
-                self.update_scroll();
+                if self.selected >= self.visible + page {
+                    self.visible = self.selected + 1 - page;
+                }
                 self.needs_redraw = true;
             }
             Keysym::Page_Up => {
-                let step = self.renderer.max_visible_rows as usize;
-                self.selected = self.selected.saturating_sub(step);
-                self.update_scroll();
+                let page = self.renderer.max_visible_rows as usize;
+                self.selected = self.selected.saturating_sub(page);
+                self.visible = self.visible.saturating_sub(page);
                 self.needs_redraw = true;
             }
             Keysym::Page_Down => {
-                let step = self.renderer.max_visible_rows as usize;
-                let max = self.search.results.len().saturating_sub(1);
-                self.selected = (self.selected + step).min(max);
-                self.update_scroll();
+                let page = self.renderer.max_visible_rows as usize;
+                let max_sel = self.search.results.len().saturating_sub(1);
+                self.selected = (self.selected + page).min(max_sel);
+                let max_vis = max_sel.saturating_sub(page.saturating_sub(1));
+                self.visible = (self.visible + page).min(max_vis);
                 self.needs_redraw = true;
             }
-            Keysym::Tab | Keysym::ISO_Left_Tab => {
-                if self.modifiers.shift {
-                    self.selected = self.selected.saturating_sub(1);
-                } else {
-                    let max = self.search.results.len().saturating_sub(1);
-                    self.selected = (self.selected + 1).min(max);
-                }
-                self.update_scroll();
+            Keysym::Left if ctrl => {
+                self.cursor = prev_word_boundary(&self.query, self.cursor);
+                self.needs_redraw = true;
+            }
+            Keysym::Right if ctrl => {
+                self.cursor = next_word_boundary(&self.query, self.cursor);
+                self.needs_redraw = true;
+            }
+            Keysym::Left => {
+                self.cursor = prev_char_boundary(&self.query, self.cursor);
+                self.needs_redraw = true;
+            }
+            Keysym::Right => {
+                self.cursor = next_char_boundary(&self.query, self.cursor);
+                self.needs_redraw = true;
+            }
+            Keysym::Home => {
+                self.cursor = 0;
+                self.needs_redraw = true;
+            }
+            Keysym::End => {
+                self.cursor = self.query.len();
+                self.needs_redraw = true;
+            }
+            Keysym::a if ctrl => {
+                self.cursor = 0;
+                self.needs_redraw = true;
+            }
+            Keysym::e if ctrl => {
+                self.cursor = self.query.len();
                 self.needs_redraw = true;
             }
             Keysym::u if ctrl => {
-                if !self.query.is_empty() {
-                    self.query.clear();
+                self.selected = self.selected.saturating_sub(1);
+                self.needs_redraw = true;
+            }
+            Keysym::d if ctrl => {
+                let max = self.search.results.len().saturating_sub(1);
+                self.selected = (self.selected + 1).min(max);
+                self.needs_redraw = true;
+            }
+            Keysym::k if ctrl => {
+                if self.cursor < self.query.len() {
+                    self.query.truncate(self.cursor);
                     self.selected = 0;
                     self.search.update(&self.query);
                     self.needs_redraw = true;
                 }
             }
-
             Keysym::BackSpace if ctrl || alt => {
-                delete_last_word(&mut self.query);
+                let new_pos = prev_word_boundary(&self.query, self.cursor);
+                self.query.drain(new_pos..self.cursor);
+                self.cursor = new_pos;
                 self.selected = 0;
                 self.search.update(&self.query);
                 self.needs_redraw = true;
             }
-
             Keysym::BackSpace => {
-                if self.query.pop().is_some() {
+                if self.cursor > 0 {
+                    let new_pos = prev_char_boundary(&self.query, self.cursor);
+                    self.query.drain(new_pos..self.cursor);
+                    self.cursor = new_pos;
                     self.selected = 0;
                     self.search.update(&self.query);
                     self.needs_redraw = true;
                 }
             }
-
+            Keysym::Delete => {
+                if self.cursor < self.query.len() {
+                    let next = next_char_boundary(&self.query, self.cursor);
+                    self.query.drain(self.cursor..next);
+                    self.selected = 0;
+                    self.search.update(&self.query);
+                    self.needs_redraw = true;
+                }
+            }
             _ => {
                 if let Some(ch) = event.utf8.and_then(|s| {
                     let mut chars = s.chars();
@@ -303,7 +360,8 @@ impl AppState {
                     if chars.next().is_none() { c } else { None }
                 }) {
                     if !ctrl && !alt && !ch.is_control() {
-                        self.query.push(ch);
+                        self.query.insert(self.cursor, ch);
+                        self.cursor += ch.len_utf8();
                         self.selected = 0;
                         self.search.update(&self.query);
                         self.needs_redraw = true;
@@ -604,11 +662,48 @@ impl Dispatch<WpViewporter, ()> for AppState {
     }
 }
 
-fn delete_last_word(s: &mut String) {
-    while s.ends_with(' ') {
-        s.pop();
+fn prev_char_boundary(s: &str, pos: usize) -> usize {
+    if pos == 0 {
+        return 0;
     }
-    while !s.is_empty() && !s.ends_with(' ') {
-        s.pop();
+    let mut i = pos - 1;
+    while !s.is_char_boundary(i) {
+        i -= 1;
     }
+    i
+}
+
+fn next_char_boundary(s: &str, pos: usize) -> usize {
+    if pos >= s.len() {
+        return s.len();
+    }
+    let mut i = pos + 1;
+    while !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
+fn prev_word_boundary(s: &str, pos: usize) -> usize {
+    let bytes = s.as_bytes();
+    let mut i = pos;
+    while i > 0 && bytes[i - 1] == b' ' {
+        i -= 1;
+    }
+    while i > 0 && bytes[i - 1] != b' ' {
+        i -= 1;
+    }
+    i
+}
+
+fn next_word_boundary(s: &str, pos: usize) -> usize {
+    let bytes = s.as_bytes();
+    let mut i = pos;
+    while i < s.len() && bytes[i] != b' ' {
+        i += 1;
+    }
+    while i < s.len() && bytes[i] == b' ' {
+        i += 1;
+    }
+    i
 }
