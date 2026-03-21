@@ -22,12 +22,7 @@ impl LauncherItem {
     }
 
     pub fn search_text(&self) -> String {
-        let mut s = self.name.clone();
-        for tag in &self.entry.tag {
-            s.push(' ');
-            s.push_str(tag);
-        }
-        s
+        self.name.clone()
     }
 }
 
