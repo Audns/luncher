@@ -13,14 +13,13 @@ Luncher is a lightweight application launcher written in Rust that provides a qu
 - Wayland-based display
 - Configuration file support
 - Efficient resource usage
+- Fuzzel like app launcher
 
 ## Installation
 
 ### Prerequisites
 
 - Rust toolchain (version 1.70 or newer)
-- Wayland development libraries
-- XKB common development files
 
 ## Cargo install
 
@@ -28,25 +27,12 @@ Luncher is a lightweight application launcher written in Rust that provides a qu
   cargo install --git https://github.com/Audns/luncher
 ```
 
-### Build from Source
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd luncher
-
-# Build the project
-cargo build --release
-
-# The binary will be available at target/release/luncher
-```
-
 ## Usage
 
 Run the launcher:
 
 ```bash
-./target/release/luncher
+luncher --help
 ```
 
 Configuration options can be adjusted in the configuration file or through command-line arguments.

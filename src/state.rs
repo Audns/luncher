@@ -1,8 +1,7 @@
 use crate::{
-    config::{Config, Scripts},
+    config::Config,
     renderer::Renderer,
     search::{FuzzySearch, LauncherItem},
-    stdin,
 };
 use calloop::LoopHandle;
 use smithay_client_toolkit::{
@@ -63,6 +62,8 @@ impl AppState {
         globals: &GlobalList,
         qh: &QueueHandle<Self>,
         loop_handle: LoopHandle<'static, AppState>,
+        items: Vec<LauncherItem>,
+        dmenu_mode: bool,
     ) -> Self {
         let cfg = Config::load();
         let scale = cfg.scale;
@@ -95,18 +96,6 @@ impl AppState {
         layer_surface.commit();
 
         let pool = SlotPool::new((phys_w * phys_h * 4) as usize, &shm).unwrap();
-
-        let (items, dmenu_mode) = if let Some(stdin_items) = stdin::read_stdin() {
-            (stdin_items, true)
-        } else {
-            let scripts = Scripts::load();
-            let items: Vec<LauncherItem> = scripts
-                .entries
-                .into_iter()
-                .map(|(name, entry)| LauncherItem::new(name, entry))
-                .collect();
-            (items, false)
-        };
 
         let mut search = FuzzySearch::new(items);
         search.update("");
