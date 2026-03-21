@@ -310,21 +310,11 @@ impl AppState {
                 self.needs_redraw = true;
             }
             Keysym::u if ctrl => {
-                self.selected = self.selected.saturating_sub(1);
+                self.query.drain(..self.cursor);
+                self.cursor = 0;
+                self.selected = 0;
+                self.search.update(&self.query);
                 self.needs_redraw = true;
-            }
-            Keysym::d if ctrl => {
-                let max = self.search.results.len().saturating_sub(1);
-                self.selected = (self.selected + 1).min(max);
-                self.needs_redraw = true;
-            }
-            Keysym::k if ctrl => {
-                if self.cursor < self.query.len() {
-                    self.query.truncate(self.cursor);
-                    self.selected = 0;
-                    self.search.update(&self.query);
-                    self.needs_redraw = true;
-                }
             }
             Keysym::BackSpace if ctrl || alt => {
                 let new_pos = prev_word_boundary(&self.query, self.cursor);
