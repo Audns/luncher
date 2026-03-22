@@ -9,6 +9,9 @@ pub struct Config {
     #[serde(default = "default_true")]
     pub single_instance: bool,
 
+    #[serde(default = "default_false")]
+    pub case_sensitive: bool,
+
     #[serde(default)]
     pub window: WindowConfig,
 }
@@ -42,6 +45,9 @@ fn default_height() -> u32 {
 fn default_true() -> bool {
     true
 }
+fn default_false() -> bool {
+    false
+}
 
 impl Config {
     pub fn load() -> Self {
@@ -60,6 +66,7 @@ impl Default for Config {
             scale: default_scale(),
             window: WindowConfig::default(),
             single_instance: default_true(),
+            case_sensitive: default_false(),
         }
     }
 }

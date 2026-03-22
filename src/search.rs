@@ -31,16 +31,21 @@ pub struct FuzzySearch {
     pub results: Vec<LauncherItem>,
     all_items: Vec<LauncherItem>,
     has_query: bool,
+    case_sensitive: bool,
 }
 
 impl FuzzySearch {
-    pub fn new(items: Vec<LauncherItem>) -> Self {
+    pub fn new(items: Vec<LauncherItem>, case_sensitive: bool) -> Self {
         let nucleo: Nucleo<LauncherItem> =
             Nucleo::new(Config::DEFAULT, std::sync::Arc::new(|| {}), None, 1);
 
         let injector = nucleo.injector();
         for item in &items {
-            let text = item.search_text();
+            let text = if case_sensitive {
+                item.search_text()
+            } else {
+                item.search_text().to_lowercase()
+            };
             let owned = item.clone();
             injector.push(owned, |_data, cols| {
                 cols[0] = text.into();
@@ -54,12 +59,39 @@ impl FuzzySearch {
             results,
             all_items: items,
             has_query: false,
+            case_sensitive,
         }
     }
 
     pub fn update(&mut self, raw_query: &str) {
         let parsed = ParsedQuery::parse(raw_query);
 
+        let tag_filter_fn = |item: &LauncherItem, tag: &str| -> bool {
+            if self.case_sensitive {
+                item.entry.tag.iter().any(|t| t.contains(tag))
+            } else {
+                let tag_lower = tag.to_lowercase();
+                item.entry
+                    .tag
+                    .iter()
+                    .any(|t| t.to_lowercase().contains(&tag_lower))
+            }
+        };
+        if parsed.query.is_empty() {
+            self.has_query = false;
+            self.results = match &parsed.mode {
+                QueryMode::Normal => self.all_items.clone(),
+                QueryMode::Tag(tag) => {
+                    let tag = tag.clone();
+                    self.all_items
+                        .iter()
+                        .filter(|i| tag_filter_fn(i, &tag))
+                        .cloned()
+                        .collect()
+                }
+            };
+            return;
+        }
         if parsed.query.is_empty() {
             self.has_query = false;
             self.results = match &parsed.mode {
@@ -75,28 +107,48 @@ impl FuzzySearch {
         }
 
         self.has_query = true;
+        let query = if self.case_sensitive {
+            parsed.query.clone()
+        } else {
+            parsed.query.to_lowercase()
+        };
+
+        let case_matching = if self.case_sensitive {
+            CaseMatching::Respect
+        } else {
+            CaseMatching::Ignore
+        };
         match &parsed.mode {
-            QueryMode::Normal => self.run_nucleo(&parsed.query, None),
+            QueryMode::Normal => self.run_nucleo(&query, None, case_matching),
             QueryMode::Tag(tag) => {
                 let tag = tag.clone();
-                self.run_nucleo(&parsed.query, Some(tag));
+                self.run_nucleo(&query, Some(tag), case_matching);
             }
         }
     }
 
-    fn run_nucleo(&mut self, query: &str, tag_filter: Option<String>) {
+    fn run_nucleo(&mut self, query: &str, tag_filter: Option<String>, case_matching: CaseMatching) {
         self.nucleo
             .pattern
-            .reparse(0, query, CaseMatching::Smart, Normalization::Smart, false);
+            .reparse(0, query, case_matching, Normalization::Smart, false);
         self.nucleo.tick(50);
 
+        let case_sensitive = self.case_sensitive;
         let snapshot = self.nucleo.snapshot();
         self.results = snapshot
             .matched_items(..snapshot.matched_item_count().min(50) as u32)
             .map(|i| i.data.clone())
             .filter(|item| {
                 if let Some(ref tag) = tag_filter {
-                    item.entry.tag.iter().any(|t| t.contains(tag.as_str()))
+                    if case_sensitive {
+                        item.entry.tag.iter().any(|t| t.contains(tag.as_str()))
+                    } else {
+                        let tag_lower = tag.to_lowercase();
+                        item.entry
+                            .tag
+                            .iter()
+                            .any(|t| t.to_lowercase().contains(&tag_lower))
+                    }
                 } else {
                     true
                 }

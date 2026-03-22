@@ -11,8 +11,16 @@ pub fn run(items: Vec<LauncherItem>, dmenu_mode: bool) {
 
     let mut event_loop: EventLoop<AppState> = EventLoop::try_new().unwrap();
     let loop_handle = event_loop.handle();
+    let cfg = crate::config::Config::load();
 
-    let mut app = AppState::new(&globals, &qh, loop_handle, items, dmenu_mode);
+    let mut app = AppState::new(
+        &globals,
+        &qh,
+        loop_handle,
+        items,
+        dmenu_mode,
+        cfg.case_sensitive,
+    );
 
     WaylandSource::new(conn, event_queue)
         .insert(event_loop.handle())

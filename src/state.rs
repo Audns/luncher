@@ -64,6 +64,7 @@ impl AppState {
         loop_handle: LoopHandle<'static, AppState>,
         items: Vec<LauncherItem>,
         dmenu_mode: bool,
+        case_sensitive: bool,
     ) -> Self {
         let cfg = Config::load();
         let scale = cfg.scale;
@@ -97,7 +98,7 @@ impl AppState {
 
         let pool = SlotPool::new((phys_w * phys_h * 4) as usize, &shm).unwrap();
 
-        let mut search = FuzzySearch::new(items);
+        let mut search = FuzzySearch::new(items, case_sensitive);
         search.update("");
 
         let renderer = Renderer::new(phys_w, phys_h, scale);
