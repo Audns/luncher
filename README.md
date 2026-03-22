@@ -45,6 +45,7 @@ Luncher uses a TOML configuration file located at `~/.config/luncher/config.toml
 # The same of your system. This fixes the ugly stretching animation of fractional scaling.
 scale = 1.25 
 single_instance = true
+case_sensitive = false
 [window]
 width = 1200
 height = 800
