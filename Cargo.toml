@@ -13,7 +13,7 @@ swash = "0.2"
 nucleo = "0.5.0"
 serde = { version = "1.0.228", features = ["derive"] }
 smithay-client-toolkit = { version = "0.20.0", features = ["calloop"] }
-toml = "1.0.6"
+toml = { version = "1.0.6", features = ["preserve_order"] }
 wayland-client = "0.31.13"
 wayland-protocols = { version = "0.32.11", features = ["client"] }
 wayland-protocols-wlr = { version = "0.3.11", features = ["client"] }
@@ -21,6 +21,7 @@ xkbcommon = "0.9.0"
 atty = "0.2.14"
 freedesktop-desktop-entry = "0.8.1"
 clap = { version = "4.6.0", features = ["derive"] }
+indexmap = { version = "2.13.0", features = ["serde"] }
 
 [profile.release]
 opt-level = 3

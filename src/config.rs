@@ -1,5 +1,6 @@
+use indexmap::IndexMap;
 use serde::Deserialize;
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -82,7 +83,7 @@ pub struct Entry {
 #[derive(Debug, Deserialize)]
 pub struct Scripts {
     #[serde(flatten)]
-    pub entries: HashMap<String, Entry>,
+    pub entries: IndexMap<String, Entry>,
 }
 
 impl Scripts {
@@ -92,7 +93,7 @@ impl Scripts {
         toml::from_str(&text).unwrap_or_else(|e| {
             eprintln!("[scripts] parse error: {e}");
             Self {
-                entries: HashMap::new(),
+                entries: IndexMap::new(),
             }
         })
     }
