@@ -31,7 +31,8 @@ pub struct FuzzySearch {
     pub results: Vec<LauncherItem>,
     all_items: Vec<LauncherItem>,
     has_query: bool,
-    case_sensitive: bool,
+    current_query: String,
+    current_tags: Vec<String>,
 }
 
 impl FuzzySearch {
@@ -59,149 +60,89 @@ impl FuzzySearch {
             results,
             all_items: items,
             has_query: false,
-            case_sensitive,
+            current_query: String::new(),
+            current_tags: Vec::new(),
         }
     }
 
     pub fn update(&mut self, raw_query: &str) {
         let parsed = ParsedQuery::parse(raw_query);
 
-        let tag_filter_fn = |item: &LauncherItem, tag: &str| -> bool {
-            if self.case_sensitive {
-                item.entry.tag.iter().any(|t| t.contains(tag))
-            } else {
-                let tag_lower = tag.to_lowercase();
-                item.entry
-                    .tag
-                    .iter()
-                    .any(|t| t.to_lowercase().contains(&tag_lower))
-            }
-        };
-        if parsed.query.is_empty() {
+        self.current_query = parsed.text;
+        self.current_tags = parsed.tags;
+
+        if self.current_query.is_empty() && self.current_tags.is_empty() {
+            self.results = self.all_items.clone();
             self.has_query = false;
-            self.results = match &parsed.mode {
-                QueryMode::Normal => self.all_items.clone(),
-                QueryMode::Tag(tag) => {
-                    let tag = tag.clone();
-                    self.all_items
-                        .iter()
-                        .filter(|i| tag_filter_fn(i, &tag))
-                        .cloned()
-                        .collect()
-                }
-            };
-            return;
-        }
-        if parsed.query.is_empty() {
-            self.has_query = false;
-            self.results = match &parsed.mode {
-                QueryMode::Normal => self.all_items.clone(),
-                QueryMode::Tag(tag) => self
-                    .all_items
-                    .iter()
-                    .filter(|i| i.entry.tag.iter().any(|t| t.contains(tag.as_str())))
-                    .cloned()
-                    .collect(),
-            };
             return;
         }
 
         self.has_query = true;
-        let query = if self.case_sensitive {
-            parsed.query.clone()
-        } else {
-            parsed.query.to_lowercase()
-        };
-
-        let case_matching = if self.case_sensitive {
-            CaseMatching::Respect
-        } else {
-            CaseMatching::Ignore
-        };
-        match &parsed.mode {
-            QueryMode::Normal => self.run_nucleo(&query, None, case_matching),
-            QueryMode::Tag(tag) => {
-                let tag = tag.clone();
-                self.run_nucleo(&query, Some(tag), case_matching);
-            }
-        }
+        self.rebuild_results();
     }
 
-    fn run_nucleo(&mut self, query: &str, tag_filter: Option<String>, case_matching: CaseMatching) {
+    fn rebuild_results(&mut self) {
+        let query = &self.current_query;
+        let tags = &self.current_tags;
+
         self.nucleo
             .pattern
-            .reparse(0, query, case_matching, Normalization::Smart, false);
+            .reparse(0, query, CaseMatching::Smart, Normalization::Smart, false);
         self.nucleo.tick(50);
 
-        let case_sensitive = self.case_sensitive;
         let snapshot = self.nucleo.snapshot();
-        self.results = snapshot
-            .matched_items(..snapshot.matched_item_count().min(50) as u32)
-            .map(|i| i.data.clone())
+
+        let candidates: Vec<LauncherItem> = if query.is_empty() {
+            self.all_items.clone()
+        } else {
+            snapshot
+                .matched_items(..snapshot.matched_item_count().min(50) as u32)
+                .map(|i| i.data.clone())
+                .collect()
+        };
+
+        self.results = candidates
+            .into_iter()
             .filter(|item| {
-                if let Some(ref tag) = tag_filter {
-                    if case_sensitive {
-                        item.entry.tag.iter().any(|t| t.contains(tag.as_str()))
-                    } else {
-                        let tag_lower = tag.to_lowercase();
-                        item.entry
-                            .tag
-                            .iter()
-                            .any(|t| t.to_lowercase().contains(&tag_lower))
-                    }
-                } else {
-                    true
-                }
+                tags.iter().all(|tag| {
+                    item.entry
+                        .tag
+                        .iter()
+                        .any(|t| t.to_lowercase().contains(tag.as_str()))
+                })
             })
             .collect();
     }
 
     pub fn tick(&mut self) {
         if self.has_query && self.nucleo.tick(0).changed {
-            let snapshot = self.nucleo.snapshot();
-            self.results = snapshot
-                .matched_items(..snapshot.matched_item_count().min(50) as u32)
-                .map(|i| i.data.clone())
-                .collect();
+            self.rebuild_results();
         }
     }
-}
-
-// ── Query parser ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub enum QueryMode {
-    Normal,
-    Tag(String),
 }
 
 #[derive(Debug, Clone)]
 pub struct ParsedQuery {
-    pub mode: QueryMode,
-    pub query: String,
+    pub text: String,
+    pub tags: Vec<String>,
 }
 
 impl ParsedQuery {
     pub fn parse(input: &str) -> Self {
-        if let Some(rest) = input.strip_prefix('#') {
-            let (tag, query) = split_first_word(rest);
-            return Self {
-                mode: QueryMode::Tag(tag.to_string()),
-                query: query.to_string(),
-            };
+        let mut text_parts = Vec::new();
+        let mut tags = Vec::new();
+        for token in input.split_whitespace() {
+            if let Some(tag) = token.strip_prefix("#") {
+                if !tag.is_empty() {
+                    tags.push(tag.to_lowercase());
+                }
+            } else {
+                text_parts.push(token);
+            }
         }
-
         Self {
-            mode: QueryMode::Normal,
-            query: input.to_string(),
+            text: text_parts.join(" "),
+            tags,
         }
-    }
-}
-
-fn split_first_word(s: &str) -> (&str, &str) {
-    if let Some(pos) = s.find(' ') {
-        (&s[..pos], s[pos + 1..].trim_start())
-    } else {
-        (s, "")
     }
 }

@@ -204,7 +204,6 @@ impl Renderer {
         let descent = metrics.descent.abs().round() as u32;
         let cursor_h = ascent + descent;
         let cursor_w = (1.5 * self.scale).round().max(1.0) as u32;
-
         if query.is_empty() {
             self.draw_text(
                 &mut buf,
@@ -219,7 +218,7 @@ impl Renderer {
         } else {
             let before = &query[..cursor];
             let after = &query[cursor..];
-            let cursor_x = self.draw_text(
+            let cx = self.draw_text(
                 &mut buf,
                 before,
                 text_x,
@@ -228,18 +227,17 @@ impl Renderer {
                 font_size,
                 INPUT_LETTER_SPACING,
             );
-
             self.draw_text(
                 &mut buf,
                 after,
-                cursor_x,
+                cx,
                 input_text_y,
                 FG,
                 font_size,
                 INPUT_LETTER_SPACING,
             );
-            self.draw_rect(&mut buf, cursor_x, input_text_y, cursor_w, cursor_h, FG);
-        }
+            self.draw_rect(&mut buf, cx, input_text_y, cursor_w, cursor_h, FG);
+        };
         // ── Separator ─────────────────────────────────────────────────────
         self.draw_rect(&mut buf, 0, input_h, self.width, 1, LINE);
 
