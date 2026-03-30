@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs::File;
 
 use memmap2::Mmap;
-use swash::scale::image::Image;
+use swash::scale::image::{Content, Image};
 use swash::scale::{Render, ScaleContext, Source, StrikeWith};
 use swash::zeno::Format;
 use swash::{CacheKey, FontRef, GlyphId};
@@ -24,20 +24,14 @@ const INPUT_LETTER_SPACING: f32 = 1.0;
 
 const PRIMARY_FONT_PATHS: &[&str] = &[
     "/usr/share/fonts/noto/NotoSans-Regular.ttf",
-    "/usr/share/fonts/TTF/NotoSans-Regular.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-    "/usr/share/fonts/noto-sans/NotoSans-Regular.ttf",
-    "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
+    "/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.ttf",
 ];
 
+const EMOJI_FONT_PATHS: &[&str] = &["/usr/share/fonts/noto/NotoColorEmoji.ttf"];
+
 const CJK_FONT_PATHS: &[&str] = &[
+    "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Regular.otf",
     "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/noto-cjk/NotoSansSC-Regular.otf",
-    "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/OTF/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/adobe-source-han-sans/SourceHanSans-Regular.ttc",
 ];
 
 struct MappedFont {
@@ -82,10 +76,13 @@ struct CachedGlyph {
     height: u32,
     advance: f32,
     data: Vec<u8>,
+    is_color: bool,
 }
 
 pub struct Renderer {
     primary: MappedFont,
+    fallback: Option<MappedFont>,
+    emoji: Option<MappedFont>,
     cjk: Option<MappedFont>,
     context: RefCell<ScaleContext>,
     cache: RefCell<HashMap<(char, u32), CachedGlyph>>,
@@ -97,11 +94,16 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(width: u32, height: u32, scale: f32) -> Self {
-        let primary = PRIMARY_FONT_PATHS
-            .iter()
-            .find_map(|p| MappedFont::open(p))
-            .unwrap_or_else(|| panic!("No font found. Install noto-fonts."));
+        let primary = MappedFont::open(PRIMARY_FONT_PATHS[0])
+            .unwrap_or_else(|| panic!("No primary font found at {}", PRIMARY_FONT_PATHS[0]));
 
+        let fallback = if PRIMARY_FONT_PATHS.len() > 1 {
+            MappedFont::open(PRIMARY_FONT_PATHS[1])
+        } else {
+            None
+        };
+
+        let emoji = EMOJI_FONT_PATHS.iter().find_map(|p| MappedFont::open(p));
         let cjk = CJK_FONT_PATHS.iter().find_map(|p| MappedFont::open(p));
 
         let max_visible_rows = {
@@ -112,6 +114,8 @@ impl Renderer {
 
         Self {
             primary,
+            fallback,
+            emoji,
             cjk,
             context: RefCell::new(ScaleContext::new()),
             cache: RefCell::new(HashMap::new()),
@@ -127,6 +131,20 @@ impl Renderer {
         let gid = primary.charmap().map(ch);
         if gid != 0 {
             return (primary, gid);
+        }
+        if let Some(emoji) = &self.emoji {
+            let emoji_ref = emoji.as_ref();
+            let gid = emoji_ref.charmap().map(ch);
+            if gid != 0 {
+                return (emoji_ref, gid);
+            }
+        }
+        if let Some(fallback) = &self.fallback {
+            let fb_ref = fallback.as_ref();
+            let gid = fb_ref.charmap().map(ch);
+            if gid != 0 {
+                return (fb_ref, gid);
+            }
         }
         if let Some(cjk) = &self.cjk {
             let cjk_ref = cjk.as_ref();
@@ -154,6 +172,7 @@ impl Renderer {
             .render(&mut scaler, gid);
 
             let cached = if let Some(img) = image {
+                let is_color = img.content == Content::Color;
                 CachedGlyph {
                     placement_left: img.placement.left,
                     placement_top: img.placement.top,
@@ -161,6 +180,7 @@ impl Renderer {
                     height: img.placement.height,
                     advance,
                     data: img.data,
+                    is_color,
                 }
             } else {
                 CachedGlyph {
@@ -170,6 +190,7 @@ impl Renderer {
                     height: 0,
                     advance,
                     data: Vec::new(),
+                    is_color: false,
                 }
             };
             self.cache.borrow_mut().insert(key, cached);
@@ -331,8 +352,22 @@ impl Renderer {
 
             for gy in 0..glyph.height {
                 for gx in 0..glyph.width {
-                    let coverage = glyph.data[(gy * glyph.width + gx) as usize];
-                    if coverage == 0 {
+                    let idx = (gy * glyph.width + gx) as usize;
+                    let (a, fr, fg, fb) = if glyph.is_color {
+                        let base = idx * 4;
+                        if base + 3 >= glyph.data.len() {
+                            continue;
+                        }
+                        let r = glyph.data[base] as u32;
+                        let g = glyph.data[base + 1] as u32;
+                        let b = glyph.data[base + 2] as u32;
+                        let a = glyph.data[base + 3] as u32;
+                        (a, r, g, b)
+                    } else {
+                        let a = glyph.data[idx] as u32;
+                        (a, fg_r as u32, fg_g as u32, fg_b as u32)
+                    };
+                    if a == 0 {
                         continue;
                     }
 
@@ -347,15 +382,14 @@ impl Renderer {
                         continue;
                     }
 
-                    let idx = (py * self.width + px) as usize;
-                    let a = coverage as u32;
+                    let bidx = (py * self.width + px) as usize;
                     let ia = 255 - a;
-                    let bg = buf[idx];
+                    let bg = buf[bidx];
                     let [_, bg_r, bg_g, bg_b] = bg.to_be_bytes();
-                    let r = (fg_r as u32 * a + bg_r as u32 * ia) / 255;
-                    let g = (fg_g as u32 * a + bg_g as u32 * ia) / 255;
-                    let b = (fg_b as u32 * a + bg_b as u32 * ia) / 255;
-                    buf[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    let r = (fr * a + bg_r as u32 * ia) / 255;
+                    let g = (fg * a + bg_g as u32 * ia) / 255;
+                    let b = (fb * a + bg_b as u32 * ia) / 255;
+                    buf[bidx] = 0xFF000000 | (r << 16) | (g << 8) | b;
                 }
             }
             cx += glyph.advance as i32 + (letter_spacing * self.scale).round() as i32;
