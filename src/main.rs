@@ -58,12 +58,12 @@ fn run_with_runtime(rt: tokio::runtime::Runtime) {
         None
     };
 
-    if cli.mode.is_empty() && !atty::is(atty::Stream::Stdin) {
+    if cli.mode.is_none() && !atty::is(atty::Stream::Stdin) {
         modes::script::run_dmenu();
         return;
     }
 
-    match cli.mode.as_str() {
+    match cli.mode.as_deref().unwrap_or("script") {
         "script" => modes::script::run(),
         "launcher" => modes::launcher::run(rt),
         "clipboard" => modes::clipboard::run(rt),

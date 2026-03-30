@@ -13,10 +13,9 @@ pub struct Cli {
         long = "mode",
         value_name = "MODE",
         help = "Mode to open",
-        long_help = "Mode to open: 'script' reads configured scripts, 'launcher' shows desktop applications, 'clipboard' shows clipboard history, and 'switcher' lists Hyprland windows grouped by workspace.",
-        default_value = "script"
+        long_help = "Mode to open: 'script' reads configured scripts, 'launcher' shows desktop applications, 'clipboard' shows clipboard history, and 'switcher' lists Hyprland windows grouped by workspace."
     )]
-    pub mode: String,
+    pub mode: Option<String>,
 
     #[arg(
         long = "daemon",
