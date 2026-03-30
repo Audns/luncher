@@ -1,14 +1,24 @@
 use crate::app;
 use crate::config::Entry;
 use crate::search::LauncherItem;
+use crate::clipboard::client;
 use freedesktop_desktop_entry::{default_paths, get_languages_from_env, Iter};
 
-pub fn run() {
-    let items = load_desktop_entries();
-    app::run(items, false, false, None, None);
+pub fn run(rt: tokio::runtime::Runtime) {
+    rt.handle().spawn(async {
+        let _ = client::ensure_daemon().await;
+    });
+    app::run(
+        Vec::new(),
+        false,
+        false,
+        Some(app::RemoteSource::Launcher),
+        Some(rt.handle().clone()),
+        Some(rt),
+    );
 }
 
-fn load_desktop_entries() -> Vec<LauncherItem> {
+pub fn load_items() -> Vec<LauncherItem> {
     let locales = get_languages_from_env();
 
     let mut items: Vec<LauncherItem> = Iter::new(default_paths())

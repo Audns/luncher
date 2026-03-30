@@ -32,7 +32,7 @@ use wayland_protocols::wp::viewporter::client::{
 use std::sync::mpsc::Receiver;
 use xkbcommon::xkb::Keysym;
 
-pub enum ClipboardUpdate {
+pub enum BackgroundUpdate {
     Items(Vec<LauncherItem>),
     Error(String),
 }
@@ -62,8 +62,8 @@ pub struct AppState {
     pub dmenu_mode: bool,
     pub cursor: usize,
     pub clipboard_mode: bool,
-    pub clipboard_updates: Option<Receiver<ClipboardUpdate>>,
-    pub last_clipboard_error: Option<String>,
+    pub background_updates: Option<Receiver<BackgroundUpdate>>,
+    pub last_background_error: Option<String>,
 }
 
 impl AppState {
@@ -74,7 +74,7 @@ impl AppState {
         items: Vec<LauncherItem>,
         dmenu_mode: bool,
         clipboard_mode: bool,
-        clipboard_updates: Option<Receiver<ClipboardUpdate>>,
+        background_updates: Option<Receiver<BackgroundUpdate>>,
         case_sensitive: bool,
     ) -> Self {
         let cfg = Config::load();
@@ -140,17 +140,13 @@ impl AppState {
             dmenu_mode,
             cursor: 0,
             clipboard_mode,
-            clipboard_updates,
-            last_clipboard_error: None,
+            background_updates,
+            last_background_error: None,
         }
     }
 
-    pub fn apply_pending_clipboard_updates(&mut self) {
-        if !self.clipboard_mode {
-            return;
-        }
-
-        let Some(receiver) = &self.clipboard_updates else {
+    pub fn apply_pending_background_updates(&mut self) {
+        let Some(receiver) = &self.background_updates else {
             return;
         };
 
@@ -158,26 +154,26 @@ impl AppState {
         let mut latest_error = None;
         while let Ok(update) = receiver.try_recv() {
             match update {
-                ClipboardUpdate::Items(items) => {
+                BackgroundUpdate::Items(items) => {
                     latest_items = Some(items);
                     latest_error = None;
                 }
-                ClipboardUpdate::Error(err) => latest_error = Some(err),
+                BackgroundUpdate::Error(err) => latest_error = Some(err),
             }
         }
 
         if let Some(items) = latest_items {
-            self.last_clipboard_error = None;
+            self.last_background_error = None;
             if self.search.replace_items(items) {
                 self.needs_redraw = true;
             }
         }
 
         if let Some(err) = latest_error {
-            let should_log = self.last_clipboard_error.as_deref() != Some(err.as_str());
-            self.last_clipboard_error = Some(err.clone());
+            let should_log = self.last_background_error.as_deref() != Some(err.as_str());
+            self.last_background_error = Some(err.clone());
             if should_log {
-                eprintln!("[clipboard] refresh failed: {err}");
+                eprintln!("[daemon] refresh failed: {err}");
             }
         }
     }
@@ -270,7 +266,7 @@ impl AppState {
                             let rt = tokio::runtime::Runtime::new().unwrap();
                             let _ = rt.block_on(async move {
                                 if let Ok(id) = id_str.parse::<u64>() {
-                                    let _ = clipbowl_lib::paste_entry(id).await;
+                                    let _ = crate::clipboard::client::paste_clipboard(id).await;
                                 }
                             });
                         }).join().ok();

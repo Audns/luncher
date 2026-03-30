@@ -1,8 +1,9 @@
 use crate::config::Entry;
 use nucleo::pattern::{CaseMatching, Normalization};
 use nucleo::{Config, Nucleo};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LauncherItem {
     pub name: String,
     pub entry: Entry,

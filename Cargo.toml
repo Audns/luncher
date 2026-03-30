@@ -5,25 +5,31 @@ edition = "2024"
 
 [dependencies]
 bytemuck = "1.25.0"
+blake3 = "1"
+bytes = "1"
 calloop = "0.14.4"
 calloop-wayland-source = "0.4.1"
 dirs = "6.0.0"
 memmap2 = "0.9"
 swash = "0.2"
 nucleo = "0.5.0"
+redb = "2"
 serde = { version = "1.0.228", features = ["derive"] }
 smithay-client-toolkit = { version = "0.20.0", features = ["calloop"] }
 toml = { version = "1.0.6", features = ["preserve_order"] }
 wayland-client = "0.31.13"
-wayland-protocols = { version = "0.32.11", features = ["client"] }
+wayland-protocols = { version = "0.32.11", features = ["client", "unstable"] }
 wayland-protocols-wlr = { version = "0.3.11", features = ["client"] }
+wl-clipboard-rs = "0.9"
 xkbcommon = "0.9.0"
 atty = "0.2.14"
 freedesktop-desktop-entry = "0.8.1"
 clap = { version = "4.6.0", features = ["derive"] }
 indexmap = { version = "2.13.0", features = ["serde"] }
-clipbowl-lib = { path = "../clipbowl/lib" }
 tokio = { version = "1", features = ["full"] }
+postcard = { version = "1", features = ["use-std"] }
+anyhow = "1"
+tracing = "0.1"
 
 [profile.release]
 opt-level = 3

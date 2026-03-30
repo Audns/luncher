@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
 #[derive(Debug, Deserialize)]
@@ -72,7 +72,7 @@ impl Default for Config {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     pub name: String,
     pub command: String,

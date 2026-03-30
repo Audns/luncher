@@ -1,9 +1,12 @@
 mod app;
+mod clipboard;
 mod cli;
 mod config;
 mod executor;
 mod instance;
+mod launcher;
 mod modes;
+mod protocol;
 mod renderer;
 mod search;
 mod state;
@@ -31,6 +34,13 @@ fn main() {
 }
 
 fn run_with_runtime(rt: tokio::runtime::Runtime) {
+    let cli = cli::parse();
+
+    if cli.daemon {
+        clipboard::daemon::run(rt);
+        return;
+    }
+
     let cfg = config::Config::load();
 
     let _lock = if cfg.single_instance {
@@ -47,7 +57,6 @@ fn run_with_runtime(rt: tokio::runtime::Runtime) {
     } else {
         None
     };
-    let cli = cli::parse();
     
     // Only go to dmenu mode if no mode specified AND stdin is not a tty
     if cli.mode.is_empty() && !atty::is(atty::Stream::Stdin) {
@@ -57,7 +66,7 @@ fn run_with_runtime(rt: tokio::runtime::Runtime) {
     
     match cli.mode.as_str() {
         "script" => modes::script::run(),
-        "launcher" => modes::launcher::run(),
+        "launcher" => modes::launcher::run(rt),
         "clipboard" => modes::clipboard::run(rt),
         other => {
             eprintln!("Unknown mode: '{other}'. Valid modes: script, launcher, clipboard");

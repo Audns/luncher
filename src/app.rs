@@ -5,15 +5,31 @@ use wayland_client::{globals::registry_queue_init, Connection};
 
 use crate::{
     search::LauncherItem,
-    state::{AppState, ClipboardUpdate},
+    state::{AppState, BackgroundUpdate},
 };
+
+#[derive(Clone, Copy)]
+pub enum RemoteSource {
+    Clipboard,
+    Launcher,
+}
+
+impl RemoteSource {
+    fn refresh_interval(self) -> Duration {
+        match self {
+            Self::Clipboard => Duration::from_millis(500),
+            Self::Launcher => Duration::from_secs(5),
+        }
+    }
+}
 
 pub fn run(
     items: Vec<LauncherItem>,
     dmenu_mode: bool,
     clipboard_mode: bool,
-    clipboard_handle: Option<tokio::runtime::Handle>,
-    clipboard_runtime: Option<tokio::runtime::Runtime>,
+    remote_source: Option<RemoteSource>,
+    remote_handle: Option<tokio::runtime::Handle>,
+    remote_runtime: Option<tokio::runtime::Runtime>,
 ) {
     let conn = Connection::connect_to_env().unwrap();
     let (globals, event_queue) = registry_queue_init(&conn).unwrap();
@@ -22,7 +38,10 @@ pub fn run(
     let mut event_loop: EventLoop<AppState> = EventLoop::try_new().unwrap();
     let loop_handle = event_loop.handle();
     let cfg = crate::config::Config::load();
-    let clipboard_updates = clipboard_handle.map(spawn_clipboard_refresh_worker);
+    let remote_updates = match (remote_source, remote_handle) {
+        (Some(source), Some(handle)) => Some(spawn_remote_refresh_worker(source, handle)),
+        _ => None,
+    };
 
     let mut app = AppState::new(
         &globals,
@@ -31,11 +50,11 @@ pub fn run(
         items,
         dmenu_mode,
         clipboard_mode,
-        clipboard_updates,
+        remote_updates,
         cfg.case_sensitive,
     );
 
-    let _clipboard_runtime = clipboard_runtime;
+    let _remote_runtime = remote_runtime;
 
     WaylandSource::new(conn, event_queue)
         .insert(event_loop.handle())
@@ -48,7 +67,7 @@ pub fn run(
         if app.exit {
             break;
         }
-        app.apply_pending_clipboard_updates();
+        app.apply_pending_background_updates();
         app.search.tick();
         if app.needs_redraw && app.configured {
             app.draw(&app.qh.clone());
@@ -60,22 +79,28 @@ pub fn run(
     drop(app);
 }
 
-fn spawn_clipboard_refresh_worker(
+fn spawn_remote_refresh_worker(
+    source: RemoteSource,
     handle: tokio::runtime::Handle,
-) -> std::sync::mpsc::Receiver<ClipboardUpdate> {
+) -> std::sync::mpsc::Receiver<BackgroundUpdate> {
     let (tx, rx) = std::sync::mpsc::channel();
 
     std::thread::spawn(move || loop {
-        let update = match handle.block_on(crate::modes::clipboard::load_items()) {
-            Ok(items) => ClipboardUpdate::Items(items),
-            Err(err) => ClipboardUpdate::Error(err),
+        let update = match source {
+            RemoteSource::Clipboard => handle.block_on(crate::modes::clipboard::load_items()),
+            RemoteSource::Launcher => handle.block_on(crate::launcher::client::load_items()),
+        };
+
+        let update = match update {
+            Ok(items) => BackgroundUpdate::Items(items),
+            Err(err) => BackgroundUpdate::Error(err),
         };
 
         if tx.send(update).is_err() {
             break;
         }
 
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(source.refresh_interval());
     });
 
     rx
