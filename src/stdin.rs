@@ -25,6 +25,7 @@ pub fn read_stdin() -> Option<Vec<LauncherItem>> {
                     name: line.clone(),
                     command: line,
                     tag: vec![],
+                    inline_meta: None,
                 },
             )
         })

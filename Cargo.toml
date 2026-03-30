@@ -13,8 +13,9 @@ dirs = "6.0.0"
 memmap2 = "0.9"
 swash = "0.2"
 nucleo = "0.5.0"
-redb = "2"
+redb = "3.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1"
 smithay-client-toolkit = { version = "0.20.0", features = ["calloop"] }
 toml = { version = "1.0.6", features = ["preserve_order"] }
 wayland-client = "0.31.13"

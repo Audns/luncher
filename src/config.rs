@@ -78,6 +78,8 @@ pub struct Entry {
     pub command: String,
     #[serde(default)]
     pub tag: Vec<String>,
+    #[serde(default)]
+    pub inline_meta: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

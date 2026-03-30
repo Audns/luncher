@@ -49,6 +49,7 @@ fn entries_to_items(entries: Vec<EntryMeta>) -> Vec<LauncherItem> {
                     name: subtitle,
                     command: entry.id.to_string(),
                     tag,
+                    inline_meta: None,
                 },
             }
         })

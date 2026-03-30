@@ -68,8 +68,11 @@ fn run_with_runtime(rt: tokio::runtime::Runtime) {
         "script" => modes::script::run(),
         "launcher" => modes::launcher::run(rt),
         "clipboard" => modes::clipboard::run(rt),
+        "switcher" => modes::switcher::run(),
         other => {
-            eprintln!("Unknown mode: '{other}'. Valid modes: script, launcher, clipboard");
+            eprintln!(
+                "Unknown mode: '{other}'. Valid modes: script, launcher, clipboard, switcher"
+            );
             std::process::exit(1);
         }
     }

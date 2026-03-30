@@ -258,7 +258,13 @@ impl Renderer {
             let name_y = row_y + (4.0 * self.scale).round() as u32;
             let name_end = self.draw_text(&mut buf, &item.name, pad_x, name_y, FG, font_size, 0.0);
 
-            let inline_meta = if !item.entry.name.is_empty() && item.entry.name != item.name {
+            let inline_meta = if let Some(ref meta) = item.entry.inline_meta {
+                if meta.is_empty() {
+                    None
+                } else {
+                    Some(meta.as_str())
+                }
+            } else if !item.entry.name.is_empty() && item.entry.name != item.name {
                 Some(item.entry.name.as_str())
             } else if item.entry.command != item.name {
                 Some(item.entry.command.as_str())

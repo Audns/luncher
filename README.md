@@ -9,6 +9,7 @@ Luncher is a lightweight Wayland launcher written in Rust. It supports three mai
 - `script` for custom script entries from your config
 - `launcher` for desktop applications discovered from `.desktop` files
 - `clipboard` for clipboard history managed by the built-in daemon
+- `switcher` for switching Hyprland workspaces from the current window list
 
 The UI is intentionally thin and startup-focused. A background daemon keeps launcher and clipboard state warm so opening `luncher` stays fast.
 
@@ -18,6 +19,7 @@ The UI is intentionally thin and startup-focused. A background daemon keeps laun
 - Script launcher mode
 - Desktop application launcher mode
 - Clipboard history mode
+- Hyprland workspace switcher mode
 - Built-in daemon for warm caches
 - TOML-based configuration
 
@@ -48,6 +50,7 @@ luncher --daemon
 luncher -m script
 luncher -m launcher
 luncher -m clipboard
+luncher -m switcher
 ```
 
 Configuration options can be adjusted in the configuration file.
@@ -61,21 +64,6 @@ luncher --daemon
 ```
 
 This is the mode to use for session autostart so clipboard tracking is already active before opening `luncher -m clipboard`.
-
-### Systemd User Service
-
-A ready-to-use user service file is included at `contrib/luncher-daemon.service`.
-
-Typical setup:
-
-```bash
-mkdir -p ~/.config/systemd/user
-cp contrib/luncher-daemon.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now luncher-daemon.service
-```
-
-If your `luncher` binary is not installed at `%h/.cargo/bin/luncher`, update `ExecStart=` in the service file first.
 
 ## Configuration
 

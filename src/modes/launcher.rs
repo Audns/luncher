@@ -58,6 +58,7 @@ pub fn load_items() -> Vec<LauncherItem> {
                     name: String::new(),
                     command,
                     tag: categories,
+                    inline_meta: None,
                 },
             })
         })

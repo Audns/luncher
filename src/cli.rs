@@ -3,9 +3,9 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(
     name = "luncher",
-    about = "Fast Wayland launcher with script, app, and clipboard modes",
-    long_about = "Luncher is a daemon-backed Wayland launcher focused on fast startup. It can run scripts, search desktop applications, and browse clipboard history.",
-    after_help = "Examples:\n  luncher --daemon\n  luncher -m script\n  luncher -m launcher\n  luncher -m clipboard"
+    about = "Fast Wayland launcher with script, app, clipboard, and switcher modes",
+    long_about = "Luncher is a daemon-backed Wayland launcher focused on fast startup. It can run scripts, search desktop applications, browse clipboard history, and switch Hyprland workspaces from the current client list.",
+    after_help = "Examples:\n  luncher --daemon\n  luncher -m script\n  luncher -m launcher\n  luncher -m clipboard\n  luncher -m switcher"
 )]
 pub struct Cli {
     #[arg(
@@ -13,7 +13,7 @@ pub struct Cli {
         long = "mode",
         value_name = "MODE",
         help = "Mode to open",
-        long_help = "Mode to open: 'script' reads configured scripts, 'launcher' shows desktop applications, and 'clipboard' shows clipboard history.",
+        long_help = "Mode to open: 'script' reads configured scripts, 'launcher' shows desktop applications, 'clipboard' shows clipboard history, and 'switcher' lists Hyprland windows grouped by workspace.",
         default_value = "script"
     )]
     pub mode: String,

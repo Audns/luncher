@@ -23,7 +23,14 @@ impl LauncherItem {
     }
 
     pub fn search_text(&self) -> String {
-        self.name.clone()
+        let mut parts = vec![self.name.clone()];
+        if !self.entry.name.is_empty() {
+            parts.push(self.entry.name.clone());
+        }
+        if !self.entry.tag.is_empty() {
+            parts.push(self.entry.tag.join(" "));
+        }
+        parts.join(" ")
     }
 }
 
