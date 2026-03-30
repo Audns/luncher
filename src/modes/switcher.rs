@@ -54,10 +54,11 @@ fn load_items() -> Vec<LauncherItem> {
     };
 
     clients.sort_by(|a, b| {
-        simplified_class_tag(&a.class)
-            .cmp(&simplified_class_tag(&b.class))
+        a.workspace
+            .id
+            .cmp(&b.workspace.id)
+            .then_with(|| simplified_class_tag(&a.class).cmp(&simplified_class_tag(&b.class)))
             .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
-            .then_with(|| a.workspace.id.cmp(&b.workspace.id))
     });
 
     clients
