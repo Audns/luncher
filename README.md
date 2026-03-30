@@ -1,6 +1,6 @@
 # Luncher
 
-A fast daemon-backed launcher for Wayland.
+All in one fast daemon-backed launcher + clipboard + ... for Wayland.
 
 ## Overview
 
