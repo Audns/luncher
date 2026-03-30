@@ -3,6 +3,7 @@ use crate::clipboard::client;
 use crate::clipboard::models::{EntryKind, EntryMeta};
 use crate::config::Entry;
 use crate::search::LauncherItem;
+use chrono::{Local, TimeZone};
 
 const HISTORY_LIMIT: usize = 50;
 
@@ -40,14 +41,12 @@ fn entries_to_items(entries: Vec<EntryMeta>) -> Vec<LauncherItem> {
                 EntryKind::Sensitive => ("••••••••".to_string(), vec!["sensitive".into()]),
                 EntryKind::Binary => (entry.preview.clone(), vec!["binary".into()]),
             };
-
-            // let age = format_age(entry.timestamp);
+            let subtitle = format_timestamp(entry.timestamp);
 
             LauncherItem {
                 name: preview.clone(),
                 entry: Entry {
-                    // Store the entry id in command — used on selection
-                    name: preview,
+                    name: subtitle,
                     command: entry.id.to_string(),
                     tag,
                 },
@@ -79,4 +78,15 @@ fn display_kind(entry: &EntryMeta) -> EntryKind {
     }
 
     entry.kind
+}
+
+fn format_timestamp(timestamp_micros: u64) -> String {
+    let secs = (timestamp_micros / 1_000_000) as i64;
+    let nanos = ((timestamp_micros % 1_000_000) * 1_000) as u32;
+
+    Local
+        .timestamp_opt(secs, nanos)
+        .single()
+        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "unknown date".to_string())
 }

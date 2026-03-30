@@ -258,9 +258,25 @@ impl Renderer {
             let name_y = row_y + (4.0 * self.scale).round() as u32;
             let name_end = self.draw_text(&mut buf, &item.name, pad_x, name_y, FG, font_size, 0.0);
 
-            if item.entry.command != item.name {
-                let cmd = format!("  {}", item.entry.command);
-                self.draw_text(&mut buf, &cmd, name_end + 4, name_y, FG_DIM, font_size, 0.0);
+            let inline_meta = if !item.entry.name.is_empty() && item.entry.name != item.name {
+                Some(item.entry.name.as_str())
+            } else if item.entry.command != item.name {
+                Some(item.entry.command.as_str())
+            } else {
+                None
+            };
+
+            if let Some(meta) = inline_meta {
+                let meta = format!("  {}", meta);
+                self.draw_text(
+                    &mut buf,
+                    &meta,
+                    name_end + 4,
+                    name_y,
+                    FG_DIM,
+                    font_size,
+                    0.0,
+                );
             }
             let meta_y = name_y + font_size as u32 + (4.0 * self.scale).round() as u32;
             let mut mx = pad_x;
