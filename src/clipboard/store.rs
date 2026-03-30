@@ -29,16 +29,13 @@ impl Store {
         let db = match Database::create(path) {
             Ok(db) => db,
             Err(e) => {
-                // Check if this is a v2 format database that needs migration
                 if path.exists() {
                     tracing::warn!("Failed to open database, attempting migration: {}", e);
-                    // Backup the old database
                     let backup_path = path.with_extension("redb.bak");
                     std::fs::rename(path, &backup_path).with_context(|| {
                         format!("backing up database to {}", backup_path.display())
                     })?;
                     tracing::info!("Backed up old database to {}", backup_path.display());
-                    // Create a new database
                     Database::create(path)
                         .with_context(|| format!("creating new redb at {}", path.display()))?
                 } else {

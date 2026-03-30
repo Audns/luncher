@@ -10,26 +10,26 @@ use smithay_client_toolkit::{
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     seat::{
-        keyboard::{KeyEvent, KeyboardHandler, Keymap, Modifiers, RawModifiers, RepeatInfo},
         Capability, SeatHandler, SeatState,
+        keyboard::{KeyEvent, KeyboardHandler, Keymap, Modifiers, RawModifiers, RepeatInfo},
     },
     shell::{
+        WaylandSurface,
         wlr_layer::{
             Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
         },
-        WaylandSurface,
     },
-    shm::{slot::SlotPool, Shm, ShmHandler},
+    shm::{Shm, ShmHandler, slot::SlotPool},
 };
+use std::sync::mpsc::Receiver;
 use wayland_client::{
+    Connection, Dispatch, QueueHandle,
     globals::GlobalList,
     protocol::{wl_keyboard::WlKeyboard, wl_shm},
-    Connection, Dispatch, QueueHandle,
 };
 use wayland_protocols::wp::viewporter::client::{
     wp_viewport::WpViewport, wp_viewporter::WpViewporter,
 };
-use std::sync::mpsc::Receiver;
 use xkbcommon::xkb::Keysym;
 
 pub enum BackgroundUpdate {
@@ -269,7 +269,9 @@ impl AppState {
                                     let _ = crate::clipboard::client::paste_clipboard(id).await;
                                 }
                             });
-                        }).join().ok();
+                        })
+                        .join()
+                        .ok();
                     } else {
                         crate::executor::execute(&item.entry.command);
                     }
@@ -394,11 +396,7 @@ impl AppState {
                 if let Some(ch) = event.utf8.and_then(|s| {
                     let mut chars = s.chars();
                     let c = chars.next();
-                    if chars.next().is_none() {
-                        c
-                    } else {
-                        None
-                    }
+                    if chars.next().is_none() { c } else { None }
                 }) {
                     if !ctrl && !alt && !ch.is_control() {
                         self.query.insert(self.cursor, ch);
