@@ -27,29 +27,33 @@ pub async fn load_items() -> Result<Vec<LauncherItem>, String> {
 }
 
 async fn load_history() -> Result<Vec<EntryMeta>, String> {
-    client::get_clipboard_history(HISTORY_LIMIT)
-        .await
+    client::get_clipboard_history(HISTORY_LIMIT).await
 }
 
 fn entries_to_items(entries: Vec<EntryMeta>) -> Vec<LauncherItem> {
     entries
         .into_iter()
         .map(|entry| {
-            let (preview, tag) = match display_kind(&entry) {
-                EntryKind::Text => (entry.preview.clone(), vec!["text".into()]),
-                EntryKind::Image => (entry.preview.clone(), vec!["image".into()]),
-                EntryKind::Sensitive => ("••••••••".to_string(), vec!["sensitive".into()]),
-                EntryKind::Binary => (entry.preview.clone(), vec!["binary".into()]),
+            let kind = display_kind(&entry);
+            let kind_tag = match kind {
+                EntryKind::Text => "text",
+                EntryKind::Image => "image",
+                EntryKind::Sensitive => "sensitive",
+                EntryKind::Binary => "binary",
             };
-            let subtitle = format_timestamp(entry.timestamp);
+            let preview = match kind {
+                EntryKind::Sensitive => "••••••••".to_string(),
+                _ => entry.preview.clone(),
+            };
+            let ts = format_timestamp(entry.timestamp);
 
             LauncherItem {
-                name: preview.clone(),
+                name: preview,
                 entry: Entry {
-                    name: subtitle,
+                    name: String::new(),
                     command: entry.id.to_string(),
-                    tag,
-                    inline_meta: None,
+                    tag: vec![kind_tag.into(), ts],
+                    inline_meta: Some(String::new()),
                 },
             }
         })
@@ -59,7 +63,11 @@ fn entries_to_items(entries: Vec<EntryMeta>) -> Vec<LauncherItem> {
 fn display_kind(entry: &EntryMeta) -> EntryKind {
     if entry.mime_type == "text/uri-list" {
         if let Some(name) = entry.filename.as_deref() {
-            let ext = name.rsplit('.').next().unwrap_or_default().to_ascii_lowercase();
+            let ext = name
+                .rsplit('.')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
             if matches!(
                 ext.as_str(),
                 "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "svg"
@@ -68,8 +76,19 @@ fn display_kind(entry: &EntryMeta) -> EntryKind {
             }
             if matches!(
                 ext.as_str(),
-                "txt" | "md" | "json" | "toml" | "yaml" | "yml" | "rs" | "c" | "h"
-                    | "cpp" | "py" | "js" | "ts"
+                "txt"
+                    | "md"
+                    | "json"
+                    | "toml"
+                    | "yaml"
+                    | "yml"
+                    | "rs"
+                    | "c"
+                    | "h"
+                    | "cpp"
+                    | "py"
+                    | "js"
+                    | "ts"
             ) {
                 return EntryKind::Text;
             }
@@ -88,6 +107,6 @@ fn format_timestamp(timestamp_micros: u64) -> String {
     Local
         .timestamp_opt(secs, nanos)
         .single()
-        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+        .map(|dt| dt.format("%m-%d-%H:%M").to_string())
         .unwrap_or_else(|| "unknown date".to_string())
 }
