@@ -24,6 +24,13 @@ delegate_registry!(AppState);
 delegate_keyboard!(AppState);
 
 fn main() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _ = rt.enter();
+    
+    run_with_runtime(rt);
+}
+
+fn run_with_runtime(rt: tokio::runtime::Runtime) {
     let cfg = config::Config::load();
 
     let _lock = if cfg.single_instance {
@@ -41,15 +48,19 @@ fn main() {
         None
     };
     let cli = cli::parse();
-    if !atty::is(atty::Stream::Stdin) {
+    
+    // Only go to dmenu mode if no mode specified AND stdin is not a tty
+    if cli.mode.is_empty() && !atty::is(atty::Stream::Stdin) {
         modes::script::run_dmenu();
         return;
     }
+    
     match cli.mode.as_str() {
         "script" => modes::script::run(),
         "launcher" => modes::launcher::run(),
+        "clipboard" => modes::clipboard::run(rt),
         other => {
-            eprintln!("Unknown mode: '{other}'. Valid modes: script, launcher");
+            eprintln!("Unknown mode: '{other}'. Valid modes: script, launcher, clipboard");
             std::process::exit(1);
         }
     }

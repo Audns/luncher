@@ -10,10 +10,10 @@ pub fn run() {
         .into_iter()
         .map(|(name, entry)| LauncherItem::new(name, entry))
         .collect();
-    app::run(items, false);
+    app::run(items, false, false, None, None);
 }
 
 pub fn run_dmenu() {
     let items = stdin::read_stdin().unwrap_or_default();
-    app::run(items, true);
+    app::run(items, true, false, None, None);
 }

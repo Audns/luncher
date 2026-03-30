@@ -10,26 +10,32 @@ use smithay_client_toolkit::{
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     seat::{
-        Capability, SeatHandler, SeatState,
         keyboard::{KeyEvent, KeyboardHandler, Keymap, Modifiers, RawModifiers, RepeatInfo},
+        Capability, SeatHandler, SeatState,
     },
     shell::{
-        WaylandSurface,
         wlr_layer::{
             Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
         },
+        WaylandSurface,
     },
-    shm::{Shm, ShmHandler, slot::SlotPool},
+    shm::{slot::SlotPool, Shm, ShmHandler},
 };
 use wayland_client::{
-    Connection, Dispatch, QueueHandle,
     globals::GlobalList,
     protocol::{wl_keyboard::WlKeyboard, wl_shm},
+    Connection, Dispatch, QueueHandle,
 };
 use wayland_protocols::wp::viewporter::client::{
     wp_viewport::WpViewport, wp_viewporter::WpViewporter,
 };
+use std::sync::mpsc::Receiver;
 use xkbcommon::xkb::Keysym;
+
+pub enum ClipboardUpdate {
+    Items(Vec<LauncherItem>),
+    Error(String),
+}
 
 pub struct AppState {
     pub exit: bool,
@@ -55,6 +61,9 @@ pub struct AppState {
     pub visible: usize,
     pub dmenu_mode: bool,
     pub cursor: usize,
+    pub clipboard_mode: bool,
+    pub clipboard_updates: Option<Receiver<ClipboardUpdate>>,
+    pub last_clipboard_error: Option<String>,
 }
 
 impl AppState {
@@ -64,6 +73,8 @@ impl AppState {
         loop_handle: LoopHandle<'static, AppState>,
         items: Vec<LauncherItem>,
         dmenu_mode: bool,
+        clipboard_mode: bool,
+        clipboard_updates: Option<Receiver<ClipboardUpdate>>,
         case_sensitive: bool,
     ) -> Self {
         let cfg = Config::load();
@@ -128,6 +139,46 @@ impl AppState {
             visible,
             dmenu_mode,
             cursor: 0,
+            clipboard_mode,
+            clipboard_updates,
+            last_clipboard_error: None,
+        }
+    }
+
+    pub fn apply_pending_clipboard_updates(&mut self) {
+        if !self.clipboard_mode {
+            return;
+        }
+
+        let Some(receiver) = &self.clipboard_updates else {
+            return;
+        };
+
+        let mut latest_items = None;
+        let mut latest_error = None;
+        while let Ok(update) = receiver.try_recv() {
+            match update {
+                ClipboardUpdate::Items(items) => {
+                    latest_items = Some(items);
+                    latest_error = None;
+                }
+                ClipboardUpdate::Error(err) => latest_error = Some(err),
+            }
+        }
+
+        if let Some(items) = latest_items {
+            self.last_clipboard_error = None;
+            if self.search.replace_items(items) {
+                self.needs_redraw = true;
+            }
+        }
+
+        if let Some(err) = latest_error {
+            let should_log = self.last_clipboard_error.as_deref() != Some(err.as_str());
+            self.last_clipboard_error = Some(err.clone());
+            if should_log {
+                eprintln!("[clipboard] refresh failed: {err}");
+            }
         }
     }
 
@@ -213,6 +264,16 @@ impl AppState {
                 if let Some(item) = self.search.results.get(self.selected) {
                     if self.dmenu_mode {
                         crate::executor::print_selection(&item.entry.command);
+                    } else if self.clipboard_mode {
+                        let id_str = item.entry.command.clone();
+                        std::thread::spawn(move || {
+                            let rt = tokio::runtime::Runtime::new().unwrap();
+                            let _ = rt.block_on(async move {
+                                if let Ok(id) = id_str.parse::<u64>() {
+                                    let _ = clipbowl_lib::paste_entry(id).await;
+                                }
+                            });
+                        }).join().ok();
                     } else {
                         crate::executor::execute(&item.entry.command);
                     }
@@ -337,7 +398,11 @@ impl AppState {
                 if let Some(ch) = event.utf8.and_then(|s| {
                     let mut chars = s.chars();
                     let c = chars.next();
-                    if chars.next().is_none() { c } else { None }
+                    if chars.next().is_none() {
+                        c
+                    } else {
+                        None
+                    }
                 }) {
                     if !ctrl && !alt && !ch.is_control() {
                         self.query.insert(self.cursor, ch);

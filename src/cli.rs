@@ -7,7 +7,7 @@ pub struct Cli {
         short = 'm',
         long = "mode",
         value_name = "MODE",
-        help = "Launch mode: script (default), launcher",
+        help = "Launch mode: script (default), launcher, clipboard",
         default_value = "script"
     )]
     pub mode: String,

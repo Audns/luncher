@@ -2,7 +2,7 @@ use crate::config::Entry;
 use nucleo::pattern::{CaseMatching, Normalization};
 use nucleo::{Config, Nucleo};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LauncherItem {
     pub name: String,
     pub entry: Entry,
@@ -30,6 +30,7 @@ pub struct FuzzySearch {
     nucleo: Nucleo<LauncherItem>,
     pub results: Vec<LauncherItem>,
     all_items: Vec<LauncherItem>,
+    case_sensitive: bool,
     has_query: bool,
     current_query: String,
     current_tags: Vec<String>,
@@ -37,21 +38,7 @@ pub struct FuzzySearch {
 
 impl FuzzySearch {
     pub fn new(items: Vec<LauncherItem>, case_sensitive: bool) -> Self {
-        let nucleo: Nucleo<LauncherItem> =
-            Nucleo::new(Config::DEFAULT, std::sync::Arc::new(|| {}), None, 1);
-
-        let injector = nucleo.injector();
-        for item in &items {
-            let text = if case_sensitive {
-                item.search_text()
-            } else {
-                item.search_text().to_lowercase()
-            };
-            let owned = item.clone();
-            injector.push(owned, |_data, cols| {
-                cols[0] = text.into();
-            });
-        }
+        let nucleo = build_nucleo(&items, case_sensitive);
 
         let results = items.clone();
 
@@ -59,10 +46,30 @@ impl FuzzySearch {
             nucleo,
             results,
             all_items: items,
+            case_sensitive,
             has_query: false,
             current_query: String::new(),
             current_tags: Vec::new(),
         }
+    }
+
+    pub fn replace_items(&mut self, items: Vec<LauncherItem>) -> bool {
+        if self.all_items == items {
+            return false;
+        }
+
+        self.nucleo = build_nucleo(&items, self.case_sensitive);
+        self.all_items = items;
+
+        if self.current_query.is_empty() && self.current_tags.is_empty() {
+            self.results = self.all_items.clone();
+            self.has_query = false;
+        } else {
+            self.has_query = true;
+            self.rebuild_results();
+        }
+
+        true
     }
 
     pub fn update(&mut self, raw_query: &str) {
@@ -119,6 +126,26 @@ impl FuzzySearch {
             self.rebuild_results();
         }
     }
+}
+
+fn build_nucleo(items: &[LauncherItem], case_sensitive: bool) -> Nucleo<LauncherItem> {
+    let nucleo: Nucleo<LauncherItem> =
+        Nucleo::new(Config::DEFAULT, std::sync::Arc::new(|| {}), None, 1);
+
+    let injector = nucleo.injector();
+    for item in items {
+        let text = if case_sensitive {
+            item.search_text()
+        } else {
+            item.search_text().to_lowercase()
+        };
+        let owned = item.clone();
+        injector.push(owned, |_data, cols| {
+            cols[0] = text.into();
+        });
+    }
+
+    nucleo
 }
 
 #[derive(Debug, Clone)]

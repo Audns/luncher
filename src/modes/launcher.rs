@@ -1,11 +1,11 @@
 use crate::app;
 use crate::config::Entry;
 use crate::search::LauncherItem;
-use freedesktop_desktop_entry::{Iter, default_paths, get_languages_from_env};
+use freedesktop_desktop_entry::{default_paths, get_languages_from_env, Iter};
 
 pub fn run() {
     let items = load_desktop_entries();
-    app::run(items, false);
+    app::run(items, false, false, None, None);
 }
 
 fn load_desktop_entries() -> Vec<LauncherItem> {
