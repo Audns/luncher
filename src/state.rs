@@ -64,6 +64,10 @@ pub struct AppState {
     pub clipboard_mode: bool,
     pub background_updates: Option<Receiver<BackgroundUpdate>>,
     pub last_background_error: Option<String>,
+    pub preview_mode: bool,
+    pub preview_content: Option<String>,
+    pub preview_scroll: usize,
+    pub preview_max_scroll: usize,
 }
 
 impl AppState {
@@ -142,6 +146,10 @@ impl AppState {
             clipboard_mode,
             background_updates,
             last_background_error: None,
+            preview_mode: false,
+            preview_content: None,
+            preview_scroll: 0,
+            preview_max_scroll: 0,
         }
     }
 
@@ -181,13 +189,34 @@ impl AppState {
     pub fn draw(&mut self, _qh: &QueueHandle<Self>) {
         self.update_scroll();
 
-        let pixels = self.renderer.render(
-            &self.query,
-            &self.search.results,
-            self.selected,
-            self.visible,
-            self.cursor,
-        );
+        let pixels = if self.preview_mode {
+            if let Some(item) = self.search.results.get(self.selected) {
+                let (buf, max_scroll) = self.renderer.render_preview(
+                    item,
+                    self.preview_content.as_deref(),
+                    self.preview_scroll,
+                );
+                self.preview_max_scroll = max_scroll;
+                self.preview_scroll = self.preview_scroll.min(max_scroll);
+                buf
+            } else {
+                self.renderer.render(
+                    &self.query,
+                    &self.search.results,
+                    self.selected,
+                    self.visible,
+                    self.cursor,
+                )
+            }
+        } else {
+            self.renderer.render(
+                &self.query,
+                &self.search.results,
+                self.selected,
+                self.visible,
+                self.cursor,
+            )
+        };
 
         let expected = (self.width * self.height * 4) as usize;
         if self.pool.len() < expected {
@@ -250,10 +279,131 @@ impl AppState {
         let ctrl = self.modifiers.ctrl;
         let alt = self.modifiers.alt;
 
+        if self.preview_mode {
+            match event.keysym {
+                Keysym::Escape | Keysym::Tab => {
+                    self.preview_mode = false;
+                    self.preview_scroll = 0;
+                    self.needs_redraw = true;
+                }
+                Keysym::c if ctrl => {
+                    self.preview_mode = false;
+                    self.preview_scroll = 0;
+                    self.exit = true;
+                }
+                Keysym::Return | Keysym::KP_Enter => {
+                    self.preview_mode = false;
+                    self.preview_scroll = 0;
+                    if let Some(item) = self.search.results.get(self.selected) {
+                        if self.dmenu_mode {
+                            crate::executor::print_selection(&item.entry.command);
+                        } else if self.clipboard_mode {
+                            let id_str = item.entry.command.clone();
+                            std::thread::spawn(move || {
+                                let rt = tokio::runtime::Runtime::new().unwrap();
+                                let _ = rt.block_on(async move {
+                                    if let Ok(id) = id_str.parse::<u64>() {
+                                        let _ = crate::clipboard::client::paste_clipboard(id).await;
+                                    }
+                                });
+                            })
+                            .join()
+                            .ok();
+                        } else {
+                            crate::executor::execute(&item.entry.command);
+                        }
+                    }
+                    self.exit = true;
+                }
+                Keysym::Up => {
+                    if self.preview_scroll > 0 {
+                        self.preview_scroll -= 1;
+                        self.needs_redraw = true;
+                    }
+                }
+                Keysym::Down => {
+                    if self.preview_scroll < self.preview_max_scroll {
+                        self.preview_scroll += 1;
+                        self.needs_redraw = true;
+                    }
+                }
+                Keysym::p if ctrl => {
+                    if self.preview_scroll > 0 {
+                        self.preview_scroll -= 1;
+                        self.needs_redraw = true;
+                    }
+                }
+                Keysym::n if ctrl => {
+                    if self.preview_scroll < self.preview_max_scroll {
+                        self.preview_scroll += 1;
+                        self.needs_redraw = true;
+                    }
+                }
+                Keysym::Page_Up => {
+                    if self.preview_scroll > 0 {
+                        self.preview_scroll = self.preview_scroll.saturating_sub(10);
+                        self.needs_redraw = true;
+                    }
+                }
+                Keysym::Page_Down => {
+                    if self.preview_scroll < self.preview_max_scroll {
+                        self.preview_scroll =
+                            (self.preview_scroll + 10).min(self.preview_max_scroll);
+                        self.needs_redraw = true;
+                    }
+                }
+                Keysym::u if ctrl => {
+                    if self.preview_scroll > 0 {
+                        self.preview_scroll = self.preview_scroll.saturating_sub(10);
+                        self.needs_redraw = true;
+                    }
+                }
+                Keysym::d if ctrl => {
+                    if self.preview_scroll < self.preview_max_scroll {
+                        self.preview_scroll =
+                            (self.preview_scroll + 10).min(self.preview_max_scroll);
+                        self.needs_redraw = true;
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
+
         match event.keysym {
             // ── Exit ──────────────────────────────────────────────────────
             Keysym::Escape => self.exit = true,
             Keysym::c if ctrl => self.exit = true,
+
+            // ── Preview toggle ────────────────────────────────────────────
+            Keysym::Tab => {
+                if !self.search.results.is_empty() {
+                    self.preview_mode = !self.preview_mode;
+                    if self.preview_mode {
+                        if self.clipboard_mode {
+                            if let Some(item) = self.search.results.get(self.selected) {
+                                if let Ok(_id) = item.entry.command.parse::<u64>() {
+                                    let id_clone = item.entry.command.clone();
+                                    let rt = tokio::runtime::Runtime::new().unwrap();
+                                    let content = rt.block_on(async move {
+                                        crate::clipboard::client::get_clipboard_content(
+                                            id_clone.parse::<u64>().unwrap_or(0),
+                                        )
+                                        .await
+                                        .unwrap_or_else(|e| format!("[Error: {e}]"))
+                                    });
+                                    self.preview_content = Some(content);
+                                }
+                            }
+                        } else {
+                            self.preview_content = None;
+                        }
+                    } else {
+                        self.preview_content = None;
+                    }
+                    self.needs_redraw = true;
+                }
+            }
 
             // ── Execute ───────────────────────────────────────────────────
             Keysym::Return | Keysym::KP_Enter => {

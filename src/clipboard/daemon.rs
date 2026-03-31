@@ -137,6 +137,13 @@ async fn dispatch(
             let entries = clipboard_entries.read().await;
             DaemonResponse::ClipboardHistory(entries.iter().take(limit).cloned().collect())
         }
+        DaemonRequest::GetClipboardContent { id } => {
+            match store.get_by_id(id) {
+                Ok(Some(entry)) => DaemonResponse::ClipboardContent(entry.full_content()),
+                Ok(None) => DaemonResponse::Error(format!("entry {id} not found")),
+                Err(e) => DaemonResponse::Error(e.to_string()),
+            }
+        }
         DaemonRequest::GetLauncherItems => {
             let entries = launcher_entries.read().await;
             DaemonResponse::LauncherItems(entries.clone())

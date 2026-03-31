@@ -113,6 +113,29 @@ impl ClipboardEntry {
         }
     }
 
+    pub fn full_content(&self) -> String {
+        if let Some(name) = &self.filename {
+            return match self.kind {
+                EntryKind::Sensitive => "********".to_string(),
+                EntryKind::Image => format!("{} · {} KB", name, self.data.len() / 1024),
+                EntryKind::Text if self.mime_type == "text/uri-list" => format!("{} · path", name),
+                EntryKind::Text => format!("{} · text", name),
+                EntryKind::Binary => format!("{} · {}", name, self.mime_type),
+            };
+        }
+
+        match self.kind {
+            EntryKind::Sensitive => "********".to_string(),
+            EntryKind::Text => String::from_utf8_lossy(&self.data).to_string(),
+            EntryKind::Image => format!(
+                "image/{} · {} KB",
+                self.mime_type.strip_prefix("image/").unwrap_or("?"),
+                self.data.len() / 1024,
+            ),
+            EntryKind::Binary => format!("{} · {} B", self.mime_type, self.data.len()),
+        }
+    }
+
     pub(crate) fn from_stored_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
         match postcard::from_bytes(bytes) {
             Ok(entry) => Ok(entry),

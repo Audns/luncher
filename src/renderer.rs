@@ -397,6 +397,154 @@ impl Renderer {
         cx.max(x as i32) as u32
     }
 
+    pub fn render_preview(
+        &self,
+        item: &crate::search::LauncherItem,
+        full_content: Option<&str>,
+        scroll_line: usize,
+    ) -> (Vec<u32>, usize) {
+        let mut buf = vec![BG; (self.width * self.height) as usize];
+
+        let font_size = (FONT_SIZE * self.scale).round();
+        let meta_size = (font_size * 0.85).round();
+        let pad_x = (PAD_X as f32 * self.scale).round() as u32;
+        let pad_y = (20.0 * self.scale).round() as u32;
+        let line_height = (ROW_H as f32 * self.scale).round() as u32;
+        let content_width = self.width.saturating_sub(pad_x * 2);
+
+        let bar_h = line_height + (8.0 * self.scale).round() as u32;
+        let bar_y = self.height.saturating_sub(bar_h);
+        let content_area = bar_y.saturating_sub(pad_y);
+        let visible_lines = if line_height > 0 {
+            (content_area / line_height) as usize
+        } else {
+            0
+        };
+
+        let mut lines: Vec<(String, f32, u32)> = Vec::new();
+
+        if let Some(content) = full_content {
+            if !content.is_empty() {
+                self.compute_wrapped_lines(
+                    &mut lines,
+                    content,
+                    font_size as f32,
+                    content_width,
+                    FG,
+                );
+            }
+        } else {
+            self.compute_wrapped_lines(&mut lines, &item.name, font_size as f32, content_width, FG);
+
+            let meta_text = if let Some(ref meta) = item.entry.inline_meta {
+                if !meta.is_empty() {
+                    Some(meta.as_str())
+                } else {
+                    None
+                }
+            } else if !item.entry.name.is_empty() && item.entry.name != item.name {
+                Some(item.entry.name.as_str())
+            } else if item.entry.command != item.name {
+                Some(item.entry.command.as_str())
+            } else {
+                None
+            };
+
+            if let Some(meta) = meta_text {
+                self.compute_wrapped_lines(
+                    &mut lines,
+                    meta,
+                    meta_size as f32,
+                    content_width,
+                    FG_DIM,
+                );
+            }
+        }
+
+        let total_lines = lines.len();
+        let max_scroll = total_lines.saturating_sub(visible_lines);
+        let start = scroll_line.min(max_scroll);
+        let end = (start + visible_lines).min(total_lines);
+        for (i, idx) in (start..end).enumerate() {
+            let (ref text, size, color) = lines[idx];
+            let y = pad_y + (i as u32 * line_height);
+            if !text.is_empty() {
+                self.draw_text(&mut buf, text, pad_x, y, color, size, 0.0);
+            }
+        }
+
+        self.draw_rect(&mut buf, 0, bar_y.saturating_sub(1), self.width, 1, LINE);
+
+        if !item.entry.tag.is_empty() {
+            let tag_y = bar_y + (4.0 * self.scale).round() as u32;
+            let mut x = pad_x;
+            let gap = (8.0 * self.scale).round() as u32;
+            for tag in &item.entry.tag {
+                let label = format!("#{}  ", tag);
+                x = self.draw_text(&mut buf, &label, x, tag_y, FG_DIM, meta_size, 0.0);
+                x += gap;
+            }
+        }
+
+        if total_lines > visible_lines {
+            let scroll_pct = if max_scroll == 0 {
+                0.0
+            } else {
+                scroll_line as f32 / max_scroll as f32
+            };
+            let thumb_h =
+                ((visible_lines as f32 / total_lines as f32) * bar_y as f32).max(4.0) as u32;
+            let track_h = bar_y.saturating_sub(thumb_h);
+            let thumb_y = ((scroll_pct * track_h as f32) as u32).min(track_h);
+            let thumb_x = self.width.saturating_sub((6.0 * self.scale).round() as u32);
+            let thumb_w = (3.0 * self.scale).round() as u32;
+            self.draw_rect(&mut buf, thumb_x, thumb_y, thumb_w, thumb_h, FG_DIM);
+        }
+
+        (buf, max_scroll)
+    }
+
+    fn compute_wrapped_lines(
+        &self,
+        lines: &mut Vec<(String, f32, u32)>,
+        text: &str,
+        size: f32,
+        max_width: u32,
+        color: u32,
+    ) {
+        let size = size.round();
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let mut line_words: Vec<&str> = Vec::new();
+
+        for word in words {
+            line_words.push(word);
+            let line_text = line_words.join(" ");
+            let test_width = self.measure_text_width(&line_text, size);
+
+            if test_width > max_width && line_words.len() > 1 {
+                line_words.pop();
+                lines.push((line_words.join(" "), size, color));
+                line_words = vec![word];
+            }
+        }
+
+        if !line_words.is_empty() {
+            lines.push((line_words.join(" "), size, color));
+        }
+    }
+
+    fn measure_text_width(&self, text: &str, size: f32) -> u32 {
+        let mut width = 0f32;
+        for ch in text.chars() {
+            if ch.is_control() {
+                continue;
+            }
+            let glyph = self.rasterize_glyph(ch, size);
+            width += glyph.advance;
+        }
+        width.round() as u32
+    }
+
     fn draw_rect(&self, buf: &mut Vec<u32>, x: u32, y: u32, w: u32, h: u32, color: u32) {
         let a = (color >> 24) as u32;
         if a == 0xFF {

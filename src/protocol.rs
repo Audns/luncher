@@ -7,6 +7,7 @@ use crate::search::LauncherItem;
 pub enum DaemonRequest {
     Ping,
     GetClipboardHistory { limit: usize },
+    GetClipboardContent { id: u64 },
     GetLauncherItems,
     PasteClipboard { id: u64 },
 }
@@ -15,6 +16,7 @@ pub enum DaemonRequest {
 pub enum DaemonResponse {
     Pong,
     ClipboardHistory(Vec<EntryMeta>),
+    ClipboardContent(String),
     LauncherItems(Vec<LauncherItem>),
     ClipboardPasted,
     Error(String),

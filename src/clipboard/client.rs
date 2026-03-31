@@ -45,6 +45,15 @@ pub async fn paste_clipboard(id: u64) -> Result<(), String> {
     }
 }
 
+pub async fn get_clipboard_content(id: u64) -> Result<String, String> {
+    ensure_daemon().await?;
+    match request(DaemonRequest::GetClipboardContent { id }).await? {
+        DaemonResponse::ClipboardContent(content) => Ok(content),
+        DaemonResponse::Error(err) => Err(err),
+        other => Err(format!("unexpected response: {other:?}")),
+    }
+}
+
 async fn ping() -> Result<(), String> {
     match request(DaemonRequest::Ping).await? {
         DaemonResponse::Pong => Ok(()),
