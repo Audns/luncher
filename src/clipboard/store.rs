@@ -26,22 +26,23 @@ impl Store {
             }
         }
 
-        let db = match Database::create(path) {
-            Ok(db) => db,
-            Err(e) => {
-                if path.exists() {
-                    tracing::warn!("Failed to open database, attempting migration: {}", e);
+        let db = if path.exists() {
+            match Database::open(path) {
+                Ok(db) => db,
+                Err(e) => {
+                    tracing::warn!("Failed to open database, attempting recovery: {}", e);
                     let backup_path = path.with_extension("redb.bak");
                     std::fs::rename(path, &backup_path).with_context(|| {
-                        format!("backing up database to {}", backup_path.display())
+                        format!("backing up corrupted database to {}", backup_path.display())
                     })?;
-                    tracing::info!("Backed up old database to {}", backup_path.display());
+                    tracing::info!("Backed up corrupted database to {}", backup_path.display());
                     Database::create(path)
                         .with_context(|| format!("creating new redb at {}", path.display()))?
-                } else {
-                    return Err(e).with_context(|| format!("opening redb at {}", path.display()));
                 }
             }
+        } else {
+            Database::create(path)
+                .with_context(|| format!("creating redb at {}", path.display()))?
         };
 
         let tx = db.begin_write()?;
