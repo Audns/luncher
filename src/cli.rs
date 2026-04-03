@@ -18,6 +18,12 @@ pub struct Cli {
     pub mode: Option<String>,
 
     #[arg(
+        long = "pull",
+        help = "For switcher mode: move window to current workspace instead of switching to window's workspace"
+    )]
+    pub pull: bool,
+
+    #[arg(
         long = "daemon",
         default_value_t = false,
         help = "Run the background daemon only",

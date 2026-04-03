@@ -18,10 +18,11 @@ struct HyprClient {
     title: String,
     #[serde(default)]
     class: String,
+    address: String,
 }
 
-pub fn run() {
-    let items = load_items();
+pub fn run(pull_to_current: bool) {
+    let items = load_items(pull_to_current);
     if items.is_empty() {
         eprintln!("[switcher] no Hyprland windows found");
         return;
@@ -30,7 +31,7 @@ pub fn run() {
     app::run(items, false, false, None, None, None);
 }
 
-fn load_items() -> Vec<LauncherItem> {
+fn load_items(pull_to_current: bool) -> Vec<LauncherItem> {
     let output = match Command::new("hyprctl").args(["clients", "-j"]).output() {
         Ok(output) => output,
         Err(err) => {
@@ -65,7 +66,14 @@ fn load_items() -> Vec<LauncherItem> {
         .into_iter()
         .map(|client| {
             let label = format_label(&client.class, &client.title, client.workspace.id);
-            let command = format!("hyprctl dispatch workspace {}", client.workspace.id);
+            let command = if pull_to_current {
+                format!(
+        "hyprctl dispatch movetoworkspacesilent $(hyprctl activeworkspace -j | jq -r '.id'),address:{} && hyprctl dispatch focuswindow address:{}",
+        client.address, client.address
+    )
+            } else {
+                format!("hyprctl dispatch workspace {}", client.workspace.id)
+            };
             LauncherItem::new(
                 label,
                 Entry {

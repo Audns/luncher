@@ -67,7 +67,7 @@ fn run_with_runtime(rt: tokio::runtime::Runtime) {
         "script" => modes::script::run(),
         "launcher" => modes::launcher::run(rt),
         "clipboard" => modes::clipboard::run(rt),
-        "switcher" => modes::switcher::run(),
+        "switcher" => modes::switcher::run(cli.pull),
         other => {
             eprintln!(
                 "Unknown mode: '{other}'. Valid modes: script, launcher, clipboard, switcher"
