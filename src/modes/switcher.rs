@@ -28,7 +28,12 @@ pub fn run(pull_to_current: bool) {
         return;
     }
 
-    app::run(items, false, false, None, None, None);
+    let mode = if pull_to_current {
+        "Pull".to_string()
+    } else {
+        "Switcher".to_string()
+    };
+    app::run(items, false, false, None, None, None, mode);
 }
 
 fn load_items(pull_to_current: bool) -> Vec<LauncherItem> {

@@ -62,6 +62,7 @@ pub struct AppState {
     pub dmenu_mode: bool,
     pub cursor: usize,
     pub clipboard_mode: bool,
+    pub mode: String,
     pub background_updates: Option<Receiver<BackgroundUpdate>>,
     pub last_background_error: Option<String>,
     pub preview_mode: bool,
@@ -80,6 +81,7 @@ impl AppState {
         clipboard_mode: bool,
         background_updates: Option<Receiver<BackgroundUpdate>>,
         case_sensitive: bool,
+        mode: String,
     ) -> Self {
         let cfg = Config::load();
         let scale = cfg.scale;
@@ -150,6 +152,7 @@ impl AppState {
             preview_content: None,
             preview_scroll: 0,
             preview_max_scroll: 0,
+            mode,
         }
     }
 
@@ -206,6 +209,7 @@ impl AppState {
                     self.selected,
                     self.visible,
                     self.cursor,
+                    &self.mode,
                 )
             }
         } else {
@@ -215,6 +219,7 @@ impl AppState {
                 self.selected,
                 self.visible,
                 self.cursor,
+                &self.mode,
             )
         };
 

@@ -205,6 +205,7 @@ impl Renderer {
         selected: usize,
         visible: usize,
         cursor: usize,
+        mode: &str,
     ) -> Vec<u32> {
         let mut buf = vec![BG; (self.width * self.height) as usize];
 
@@ -215,11 +216,28 @@ impl Renderer {
         let row_h = (ROW_H as f32 * self.scale).round() as u32;
         let input_h = (INPUT_H as f32 * self.scale).round() as u32;
         let pad_x = (PAD_X as f32 * self.scale).round() as u32;
-        let text_x = pad_x + (20.0 * self.scale).round() as u32;
         let gap = (8.0 * self.scale).round() as u32;
 
         // ── Input row ─────────────────────────────────────────────────────
         let input_text_y = input_h.saturating_sub(font_size as u32) / 2;
+
+        // ── Mode prefix ─────────────────────────────────────────────────────
+        let mode_prefix = format!("{}> ", mode);
+        let prefix_w = self.measure_text_width(&mode_prefix, hint_size);
+        let prefix_x = pad_x;
+        if !mode.is_empty() {
+            self.draw_text(
+                &mut buf,
+                &mode_prefix,
+                prefix_x,
+                input_text_y,
+                FG_DIM,
+                hint_size,
+                INPUT_LETTER_SPACING,
+            );
+        }
+        let text_x = pad_x + prefix_w + (20.0 * self.scale).round() as u32 - 15;
+
         let metrics = self.primary.as_ref().metrics(&[]).scale(font_size);
         let ascent = metrics.ascent.round() as u32;
         let descent = metrics.descent.abs().round() as u32;

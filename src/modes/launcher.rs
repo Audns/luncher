@@ -1,8 +1,8 @@
 use crate::app;
+use crate::clipboard::client;
 use crate::config::Entry;
 use crate::search::LauncherItem;
-use crate::clipboard::client;
-use freedesktop_desktop_entry::{default_paths, get_languages_from_env, Iter};
+use freedesktop_desktop_entry::{Iter, default_paths, get_languages_from_env};
 
 pub fn run(rt: tokio::runtime::Runtime) {
     rt.handle().spawn(async {
@@ -15,6 +15,7 @@ pub fn run(rt: tokio::runtime::Runtime) {
         Some(app::RemoteSource::Launcher),
         Some(rt.handle().clone()),
         Some(rt),
+        "Launcher".to_string(),
     );
 }
 

@@ -18,6 +18,7 @@ pub fn run(rt: tokio::runtime::Runtime) {
         Some(app::RemoteSource::Clipboard),
         Some(rt.handle().clone()),
         Some(rt),
+        "Clipboard".to_string(),
     );
 }
 

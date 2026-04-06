@@ -30,6 +30,7 @@ pub fn run(
     remote_source: Option<RemoteSource>,
     remote_handle: Option<tokio::runtime::Handle>,
     remote_runtime: Option<tokio::runtime::Runtime>,
+    mode: String,
 ) {
     let conn = Connection::connect_to_env().unwrap();
     let (globals, event_queue) = registry_queue_init(&conn).unwrap();
@@ -52,6 +53,7 @@ pub fn run(
         clipboard_mode,
         remote_updates,
         cfg.case_sensitive,
+        mode,
     );
 
     let _remote_runtime = remote_runtime;
