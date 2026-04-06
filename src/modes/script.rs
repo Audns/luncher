@@ -15,5 +15,5 @@ pub fn run() {
 
 pub fn run_dmenu() {
     let items = stdin::read_stdin().unwrap_or_default();
-    app::run(items, true, false, None, None, None, "Scripts".to_string());
+    app::run(items, true, false, None, None, None, "".to_string());
 }

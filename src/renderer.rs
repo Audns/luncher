@@ -20,7 +20,7 @@ const HINT_SIZE: f32 = 22.0;
 const ROW_H: u32 = 58;
 const INPUT_H: u32 = 45;
 const PAD_X: u32 = 16;
-const INPUT_LETTER_SPACING: f32 = 1.0;
+const INPUT_LETTER_SPACING: f32 = 0.5;
 
 const PRIMARY_FONT_PATHS: &[&str] = &[
     "/usr/share/fonts/noto/NotoSans-Regular.ttf",
@@ -231,7 +231,7 @@ impl Renderer {
                 &mode_prefix,
                 prefix_x,
                 input_text_y,
-                FG_DIM,
+                FG,
                 hint_size,
                 INPUT_LETTER_SPACING,
             );
@@ -494,12 +494,12 @@ impl Renderer {
         self.draw_rect(&mut buf, 0, bar_y.saturating_sub(1), self.width, 1, LINE);
 
         if !item.entry.tag.is_empty() {
-            let tag_y = bar_y + (4.0 * self.scale).round() as u32;
+            let tag_y = bar_y + (4.0 * self.scale).round() as u32 + 16;
             let mut x = pad_x;
             let gap = (8.0 * self.scale).round() as u32;
             for tag in &item.entry.tag {
                 let label = format!("#{}  ", tag);
-                x = self.draw_text(&mut buf, &label, x, tag_y, FG_DIM, meta_size, 0.0);
+                x = self.draw_text(&mut buf, &label, x, tag_y, FG, meta_size, 0.0);
                 x += gap;
             }
         }
