@@ -97,7 +97,19 @@ impl ClipboardEntry {
             EntryKind::Sensitive => "********".to_string(),
             EntryKind::Text => {
                 let s = String::from_utf8_lossy(&self.data);
-                let flat: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+                let flat: String = s
+                    .lines()
+                    .enumerate()
+                    .map(|(i, line)| {
+                        let collapsed = line.split_whitespace().collect::<Vec<_>>().join(" ");
+                        if i == 0 {
+                            collapsed
+                        } else {
+                            format!("↪ {}", collapsed)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 let mut out: String = flat.chars().take(max_chars).collect();
                 if flat.chars().count() > max_chars {
                     out.push('…');
