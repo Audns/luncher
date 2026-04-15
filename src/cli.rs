@@ -5,7 +5,7 @@ use clap::Parser;
     name = "luncher",
     about = "Fast Wayland launcher with script, app, clipboard, and switcher modes",
     long_about = "Luncher is a daemon-backed Wayland launcher focused on fast startup. It can run scripts, search desktop applications, browse clipboard history, and switch Hyprland workspaces from the current client list.",
-    after_help = "Examples:\n  luncher --daemon\n  luncher -m script\n  luncher -m launcher\n  luncher -m clipboard\n  luncher -m switcher"
+    after_help = "Examples:\n  luncher --daemon\n  luncher -m script\n  luncher -m launcher\n  luncher -m clipboard\n  luncher -m switcher\n  luncher -m tool\n  luncher -m exec -f 'ghostty'"
 )]
 pub struct Cli {
     #[arg(
@@ -13,7 +13,7 @@ pub struct Cli {
         long = "mode",
         value_name = "MODE",
         help = "Mode to open",
-        long_help = "Mode to open: 'script' reads configured scripts, 'launcher' shows desktop applications, 'clipboard' shows clipboard history, 'switcher' lists Hyprland windows, 'tool' outputs entries as JSON, 'exec' runs a script by name"
+        long_help = "Mode to open: 'script' reads configured scripts, 'launcher' shows desktop applications, 'clipboard' shows clipboard history, 'switcher' lists Hyprland windows, 'tool' outputs entries as JSON, 'exec' runs a script by name (requires -f)"
     )]
     pub mode: Option<String>,
 
