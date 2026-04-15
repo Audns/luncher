@@ -79,9 +79,17 @@ fn run_with_runtime(rt: tokio::runtime::Runtime) {
                 std::process::exit(1);
             }
         }
+        "fetch" => {
+            if let Some(pattern) = cli.fix.as_deref() {
+                println!("{}", modes::fetch::run(pattern, cfg.case_sensitive, cli.only_script, cli.only_launcher));
+            } else {
+                eprintln!("fetch mode requires -f/--fix argument");
+                std::process::exit(1);
+            }
+        }
         other => {
             eprintln!(
-                "Unknown mode: '{other}'. Valid modes: script, launcher, clipboard, switcher, tool, exec"
+                "Unknown mode: '{other}'. Valid modes: script, launcher, clipboard, switcher, tool, exec, fetch"
             );
             std::process::exit(1);
         }

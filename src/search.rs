@@ -81,6 +81,10 @@ impl FuzzySearch {
     }
 
     pub fn update(&mut self, raw_query: &str) {
+        self.update_query(raw_query);
+    }
+
+    pub fn update_query(&mut self, raw_query: &str) {
         let parsed = ParsedQuery::parse(raw_query);
 
         self.current_query = parsed.text;
