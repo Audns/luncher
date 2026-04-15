@@ -13,9 +13,18 @@ pub struct Cli {
         long = "mode",
         value_name = "MODE",
         help = "Mode to open",
-        long_help = "Mode to open: 'script' reads configured scripts, 'launcher' shows desktop applications, 'clipboard' shows clipboard history, and 'switcher' lists Hyprland windows grouped by workspace."
+        long_help = "Mode to open: 'script' reads configured scripts, 'launcher' shows desktop applications, 'clipboard' shows clipboard history, 'switcher' lists Hyprland windows, 'tool' outputs entries as JSON, 'exec' runs a script by name"
     )]
     pub mode: Option<String>,
+
+    #[arg(
+        short = 'f',
+        long = "fix",
+        value_name = "NAME",
+        help = "Script name for exec mode",
+        long_help = "Script name to execute when mode is 'exec'"
+    )]
+    pub fix: Option<String>,
 
     #[arg(
         long = "pull",

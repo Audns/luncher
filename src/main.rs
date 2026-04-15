@@ -68,9 +68,20 @@ fn run_with_runtime(rt: tokio::runtime::Runtime) {
         "launcher" => modes::launcher::run(rt),
         "clipboard" => modes::clipboard::run(rt),
         "switcher" => modes::switcher::run(cli.pull),
+        "tool" => {
+            println!("{}", modes::tool::run_json());
+        }
+        "exec" => {
+            if let Some(name) = cli.fix.as_deref() {
+                modes::exec::run(name);
+            } else {
+                eprintln!("exec mode requires -f/--fix argument");
+                std::process::exit(1);
+            }
+        }
         other => {
             eprintln!(
-                "Unknown mode: '{other}'. Valid modes: script, launcher, clipboard, switcher"
+                "Unknown mode: '{other}'. Valid modes: script, launcher, clipboard, switcher, tool, exec"
             );
             std::process::exit(1);
         }
