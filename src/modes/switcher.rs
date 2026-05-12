@@ -73,11 +73,11 @@ fn load_items(pull_to_current: bool) -> Vec<LauncherItem> {
             let label = format_label(&client.class, &client.title, client.workspace.id);
             let command = if pull_to_current {
                 format!(
-        "hyprctl dispatch movetoworkspacesilent $(hyprctl activeworkspace -j | jq -r '.id'),address:{} && hyprctl dispatch focuswindow address:{}",
+         "hyprctl dispatch 'hl.dsp.window.move({{workspace = '$(hyprctl activeworkspace -j | jq -r '.id')', window = \"address:{}\", silent = true}})' && hyprctl dispatch 'hl.dsp.window.focus({{window = \"address:{}\"}})'",
         client.address, client.address
     )
             } else {
-                format!("hyprctl dispatch workspace {}", client.workspace.id)
+                format!("hyprctl dispatch 'hl.dsp.focus({{workspace = {}}})'", client.workspace.id)
             };
             LauncherItem::new(
                 label,
