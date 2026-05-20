@@ -8,20 +8,6 @@ use swash::scale::{Render, ScaleContext, Source, StrikeWith};
 use swash::zeno::Format;
 use swash::{CacheKey, FontRef, GlyphId};
 
-const BG: u32 = 0xFF1E1E2E;
-const FG: u32 = 0xE6E6E6FF;
-const FG_DIM: u32 = 0x73C0CAF5;
-const FG_HINT: u32 = 0x4DC0CAF5;
-const SEL_BG: u32 = 0x15C0CAF5;
-const LINE: u32 = 0xFF2A2A3E;
-
-const FONT_SIZE: f32 = 22.0;
-const HINT_SIZE: f32 = 22.0;
-const ROW_H: u32 = 58;
-const INPUT_H: u32 = 45;
-const PAD_X: u32 = 16;
-const INPUT_LETTER_SPACING: f32 = 0.5;
-
 const PRIMARY_FONT_PATHS: &[&str] = &[
     "/usr/share/fonts/noto/NotoSans-Regular.ttf",
     "/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.ttf",
@@ -90,10 +76,12 @@ pub struct Renderer {
     pub height: u32,
     pub scale: f32,
     pub max_visible_rows: u32,
+    theme: crate::config::ThemeConfig,
+    layout: crate::config::LayoutConfig,
 }
 
 impl Renderer {
-    pub fn new(width: u32, height: u32, scale: f32) -> Self {
+    pub fn new(width: u32, height: u32, scale: f32, theme: crate::config::ThemeConfig, layout: crate::config::LayoutConfig) -> Self {
         let primary = MappedFont::open(PRIMARY_FONT_PATHS[0])
             .unwrap_or_else(|| panic!("No primary font found at {}", PRIMARY_FONT_PATHS[0]));
 
@@ -107,8 +95,8 @@ impl Renderer {
         let cjk = CJK_FONT_PATHS.iter().find_map(|p| MappedFont::open(p));
 
         let max_visible_rows = {
-            let row_h = (ROW_H as f32 * scale).round() as u32;
-            let input_h = (INPUT_H as f32 * scale).round() as u32;
+            let row_h = (layout.row_h as f32 * scale).round() as u32;
+            let input_h = (layout.input_h as f32 * scale).round() as u32;
             height.saturating_sub(input_h + 1) / row_h
         };
 
@@ -123,6 +111,8 @@ impl Renderer {
             height,
             scale,
             max_visible_rows,
+            theme,
+            layout,
         }
     }
 
@@ -198,6 +188,7 @@ impl Renderer {
         std::cell::Ref::map(self.cache.borrow(), |c| c.get(&key).unwrap())
     }
 
+    #[allow(non_snake_case)]
     pub fn render(
         &self,
         query: &str,
@@ -207,6 +198,20 @@ impl Renderer {
         cursor: usize,
         mode: &str,
     ) -> Vec<u32> {
+        let BG = self.theme.bg;
+        let FG = self.theme.fg;
+        let FG_DIM = self.theme.fg_dim;
+        let FG_HINT = self.theme.fg_hint;
+        let SEL_BG = self.theme.sel_bg;
+        let LINE = self.theme.line;
+
+        let FONT_SIZE = self.layout.font_size;
+        let HINT_SIZE = self.layout.hint_size;
+        let ROW_H = self.layout.row_h;
+        let INPUT_H = self.layout.input_h;
+        let PAD_X = self.layout.pad_x;
+        let INPUT_LETTER_SPACING = self.layout.input_letter_spacing;
+
         let mut buf = vec![BG; (self.width * self.height) as usize];
 
         let font_size = (FONT_SIZE * self.scale).round();
@@ -415,12 +420,22 @@ impl Renderer {
         cx.max(x as i32) as u32
     }
 
+    #[allow(non_snake_case)]
     pub fn render_preview(
         &self,
         item: &crate::search::LauncherItem,
         full_content: Option<&str>,
         scroll_line: usize,
     ) -> (Vec<u32>, usize) {
+        let BG = self.theme.bg;
+        let FG = self.theme.fg;
+        let FG_DIM = self.theme.fg_dim;
+        let LINE = self.theme.line;
+
+        let FONT_SIZE = self.layout.font_size;
+        let PAD_X = self.layout.pad_x;
+        let ROW_H = self.layout.row_h;
+
         let mut buf = vec![BG; (self.width * self.height) as usize];
 
         let font_size = (FONT_SIZE * self.scale).round();
