@@ -7,10 +7,10 @@ use tokio::sync::RwLock;
 use crate::clipboard::backend;
 use crate::clipboard::models::EntryMeta;
 use crate::clipboard::store::SharedStore;
+use crate::config::Config;
 use crate::protocol::{DaemonRequest, DaemonResponse};
 use crate::search::LauncherItem;
 
-const HISTORY_LIMIT: usize = 50;
 const CLIPBOARD_REFRESH_INTERVAL_MS: u64 = 500;
 const LAUNCHER_REFRESH_INTERVAL_MS: u64 = 10_000;
 
@@ -18,18 +18,19 @@ type SharedClipboardEntries = Arc<RwLock<Vec<EntryMeta>>>;
 type SharedLauncherEntries = Arc<RwLock<Vec<LauncherItem>>>;
 
 pub fn run(rt: tokio::runtime::Runtime) {
-    if let Err(err) = rt.block_on(run_async()) {
+    let cfg = Config::load();
+    if let Err(err) = rt.block_on(run_async(cfg.clipboard.history_limit)) {
         eprintln!("[daemon] {err}");
     }
 }
 
-async fn run_async() -> anyhow::Result<()> {
+async fn run_async(history_limit: usize) -> anyhow::Result<()> {
     let store = backend::open_store().map_err(anyhow::Error::msg)?;
     backend::spawn_watcher(Arc::clone(&store));
 
     let clipboard_entries: SharedClipboardEntries = Arc::new(RwLock::new(Vec::new()));
     let launcher_entries: SharedLauncherEntries = Arc::new(RwLock::new(Vec::new()));
-    let _ = refresh_clipboard_entries(&store, &clipboard_entries).await;
+    let _ = refresh_clipboard_entries(&store, &clipboard_entries, history_limit).await;
     let _ = refresh_launcher_entries(&launcher_entries).await;
 
     let socket = socket_path()?;
@@ -49,7 +50,7 @@ async fn run_async() -> anyhow::Result<()> {
     tokio::spawn(async move {
         let mut last_error = None;
         loop {
-            match refresh_clipboard_entries(&refresh_clipboard_store, &refresh_clipboard_state).await {
+            match refresh_clipboard_entries(&refresh_clipboard_store, &refresh_clipboard_state, history_limit).await {
                 Ok(()) => last_error = None,
                 Err(err) => {
                     let should_log = last_error.as_deref() != Some(err.as_str());
@@ -87,8 +88,9 @@ async fn run_async() -> anyhow::Result<()> {
 async fn refresh_clipboard_entries(
     store: &SharedStore,
     entries: &SharedClipboardEntries,
+    history_limit: usize,
 ) -> Result<(), String> {
-    let history = backend::load_clipboard_history(store, HISTORY_LIMIT)?;
+    let history = backend::load_clipboard_history(store, history_limit)?;
     *entries.write().await = history;
     Ok(())
 }

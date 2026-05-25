@@ -21,6 +21,9 @@ pub struct Config {
 
     #[serde(default)]
     pub layout: LayoutConfig,
+
+    #[serde(default)]
+    pub clipboard: ClipboardConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,6 +137,21 @@ impl Default for Config {
             case_sensitive: default_false(),
             theme: ThemeConfig::default(),
             layout: LayoutConfig::default(),
+            clipboard: ClipboardConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ClipboardConfig {
+    #[serde(default = "default_history_limit")]
+    pub history_limit: usize,
+}
+
+impl Default for ClipboardConfig {
+    fn default() -> Self {
+        Self {
+            history_limit: default_history_limit(),
         }
     }
 }
@@ -166,6 +184,8 @@ impl Scripts {
         })
     }
 }
+
+fn default_history_limit() -> usize { 50 }
 
 fn default_font_size() -> f32 { 22.0 }
 fn default_hint_size() -> f32 { 22.0 }

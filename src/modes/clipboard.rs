@@ -1,11 +1,9 @@
 use crate::app;
 use crate::clipboard::client;
 use crate::clipboard::models::{EntryKind, EntryMeta};
-use crate::config::Entry;
+use crate::config::{Config, Entry};
 use crate::search::LauncherItem;
 use chrono::{Local, TimeZone};
-
-const HISTORY_LIMIT: usize = 50;
 
 pub fn run(rt: tokio::runtime::Runtime) {
     rt.handle().spawn(async {
@@ -28,7 +26,8 @@ pub async fn load_items() -> Result<Vec<LauncherItem>, String> {
 }
 
 async fn load_history() -> Result<Vec<EntryMeta>, String> {
-    client::get_clipboard_history(HISTORY_LIMIT).await
+    let cfg = Config::load();
+    client::get_clipboard_history(cfg.clipboard.history_limit).await
 }
 
 fn entries_to_items(entries: Vec<EntryMeta>) -> Vec<LauncherItem> {
