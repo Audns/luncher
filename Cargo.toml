@@ -19,7 +19,7 @@ serde_json = "1"
 smithay-client-toolkit = { version = "0.20.0", features = ["calloop"] }
 toml = { version = "1.0.6", features = ["preserve_order"] }
 wayland-client = "0.31.13"
-wayland-protocols = { version = "0.32.11", features = ["client", "unstable"] }
+wayland-protocols = { version = "0.32.11", features = ["client"] }
 wayland-protocols-wlr = { version = "0.3.11", features = ["client"] }
 wl-clipboard-rs = "0.9"
 xkbcommon = "0.9.0"
@@ -28,7 +28,7 @@ freedesktop-desktop-entry = "0.8.1"
 clap = { version = "4.6.0", features = ["derive"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 indexmap = { version = "2.13.0", features = ["serde"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync", "time", "macros"] }
 postcard = { version = "1", features = ["use-std"] }
 anyhow = "1"
 tracing = "0.1"
