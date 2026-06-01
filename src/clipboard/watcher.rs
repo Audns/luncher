@@ -381,7 +381,7 @@ fn uri_list_filename(data: &[u8]) -> Result<String> {
 }
 
 fn percent_decode(input: &str) -> String {
-    let mut out = String::new();
+    let mut bytes = Vec::with_capacity(input.len());
     let mut chars = input.chars().peekable();
     while let Some(ch) = chars.next() {
         if ch == '%' {
@@ -389,14 +389,15 @@ fn percent_decode(input: &str) -> String {
             if hex.len() == 2
                 && let Ok(byte) = u8::from_str_radix(&hex, 16)
             {
-                out.push(byte as char);
+                bytes.push(byte);
                 continue;
             }
-            out.push('%');
-            out.push_str(&hex);
+            bytes.push(b'%');
+            bytes.extend(hex.bytes());
         } else {
-            out.push(ch);
+            let mut buf = [0; 4];
+            bytes.extend(ch.encode_utf8(&mut buf).as_bytes());
         }
     }
-    out
+    String::from_utf8_lossy(&bytes).into_owned()
 }
