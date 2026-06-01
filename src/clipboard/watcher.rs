@@ -5,8 +5,8 @@ use anyhow::{Context, Result};
 use bytes::Bytes;
 use tracing::{info, warn};
 use wayland_client::{
-    protocol::{wl_registry, wl_seat},
     Connection, Dispatch, EventQueue, QueueHandle,
+    protocol::{wl_registry, wl_seat},
 };
 use wayland_protocols::ext::data_control::v1::client::{
     ext_data_control_device_v1, ext_data_control_manager_v1, ext_data_control_offer_v1,
@@ -21,18 +21,18 @@ const SENSITIVE_MIMES: &[&str] = &[
     "org.freedesktop.secret",
 ];
 
-pub fn spawn_watcher(store: SharedStore) {
+pub fn spawn_watcher(store: SharedStore, notify: std::sync::Arc<tokio::sync::Notify>) {
     std::thread::Builder::new()
         .name("clipboard-watcher".into())
         .spawn(move || {
-            if let Err(err) = run_watcher(store) {
+            if let Err(err) = run_watcher(store, notify) {
                 eprintln!("[daemon] clipboard watcher crashed: {err:#}");
             }
         })
         .expect("failed to spawn watcher thread");
 }
 
-fn run_watcher(store: SharedStore) -> Result<()> {
+fn run_watcher(store: SharedStore, notify: std::sync::Arc<tokio::sync::Notify>) -> Result<()> {
     let conn = Connection::connect_to_env()
         .context("connecting to Wayland display — is WAYLAND_DISPLAY set?")?;
     let display = conn.display();
@@ -46,6 +46,7 @@ fn run_watcher(store: SharedStore) -> Result<()> {
         manager: None,
         device_created: false,
         pending: None,
+        notify,
     };
 
     display.get_registry(&qh, ());
@@ -72,6 +73,7 @@ struct State {
     manager: Option<ext_data_control_manager_v1::ExtDataControlManagerV1>,
     device_created: bool,
     pending: Option<PendingOffer>,
+    notify: std::sync::Arc<tokio::sync::Notify>,
 }
 
 struct PendingOffer {
@@ -116,11 +118,11 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
             _ => return,
         }
 
-        if !state.device_created {
-            if let (Some(seat), Some(manager)) = (&state.seat, &state.manager) {
-                manager.get_data_device(seat, qh, ());
-                state.device_created = true;
-            }
+        if !state.device_created
+            && let (Some(seat), Some(manager)) = (&state.seat, &state.manager)
+        {
+            manager.get_data_device(seat, qh, ());
+            state.device_created = true;
         }
     }
 }
@@ -176,7 +178,9 @@ impl Dispatch<ext_data_control_device_v1::ExtDataControlDeviceV1, ()> for State 
                 if offer.proxy != offer_proxy {
                     return;
                 }
-                process_offer(offer, &state.store, conn);
+                if process_offer(offer, &state.store, conn) {
+                    state.notify.notify_one();
+                }
             }
             Event::Finished => warn!("data control device finished"),
             _ => {}
@@ -211,10 +215,7 @@ impl Dispatch<ext_data_control_offer_v1::ExtDataControlOfferV1, ()> for State {
             return;
         };
 
-        if SENSITIVE_MIMES
-            .iter()
-            .any(|item| *item == mime_type.as_str())
-        {
+        if SENSITIVE_MIMES.contains(&mime_type.as_str()) {
             offer.sensitive = true;
             return;
         }
@@ -223,17 +224,17 @@ impl Dispatch<ext_data_control_offer_v1::ExtDataControlOfferV1, ()> for State {
     }
 }
 
-fn process_offer(offer: PendingOffer, store: &SharedStore, conn: &Connection) {
+fn process_offer(offer: PendingOffer, store: &SharedStore, conn: &Connection) -> bool {
     let Some(mime) = choose_mime(&offer.mimes) else {
-        return;
+        return false;
     };
 
     let data = match read_pipe(&offer.proxy, &mime, conn) {
-        Ok(data) if data.is_empty() => return,
+        Ok(data) if data.is_empty() => return false,
         Ok(data) => data,
         Err(err) => {
             warn!("pipe read failed for MIME {mime}: {err}");
-            return;
+            return false;
         }
     };
 
@@ -246,8 +247,13 @@ fn process_offer(offer: PendingOffer, store: &SharedStore, conn: &Connection) {
         filename,
     );
 
-    if let Err(err) = store.insert(&entry) {
-        warn!("store insert error: {err}");
+    match store.insert(&entry) {
+        Ok(Some(_)) => true,
+        Ok(None) => false,
+        Err(err) => {
+            warn!("store insert error: {err}");
+            false
+        }
     }
 }
 
@@ -380,11 +386,11 @@ fn percent_decode(input: &str) -> String {
     while let Some(ch) = chars.next() {
         if ch == '%' {
             let hex: String = chars.by_ref().take(2).collect();
-            if hex.len() == 2 {
-                if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                    out.push(byte as char);
-                    continue;
-                }
+            if hex.len() == 2
+                && let Ok(byte) = u8::from_str_radix(&hex, 16)
+            {
+                out.push(byte as char);
+                continue;
             }
             out.push('%');
             out.push_str(&hex);

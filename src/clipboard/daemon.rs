@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::RwLock;
+use tokio::sync::{Notify, RwLock};
 
 use crate::clipboard::backend;
 use crate::clipboard::models::EntryMeta;
@@ -26,7 +26,8 @@ pub fn run(rt: tokio::runtime::Runtime) {
 
 async fn run_async(history_limit: usize) -> anyhow::Result<()> {
     let store = backend::open_store().map_err(anyhow::Error::msg)?;
-    backend::spawn_watcher(Arc::clone(&store));
+    let clipboard_notify = Arc::new(Notify::new());
+    backend::spawn_watcher(Arc::clone(&store), Arc::clone(&clipboard_notify));
 
     let clipboard_entries: SharedClipboardEntries = Arc::new(RwLock::new(Vec::new()));
     let launcher_entries: SharedLauncherEntries = Arc::new(RwLock::new(Vec::new()));
@@ -47,10 +48,17 @@ async fn run_async(history_limit: usize) -> anyhow::Result<()> {
 
     let refresh_clipboard_store = Arc::clone(&store);
     let refresh_clipboard_state = Arc::clone(&clipboard_entries);
+    let refresh_notify = Arc::clone(&clipboard_notify);
     tokio::spawn(async move {
         let mut last_error = None;
         loop {
-            match refresh_clipboard_entries(&refresh_clipboard_store, &refresh_clipboard_state, history_limit).await {
+            match refresh_clipboard_entries(
+                &refresh_clipboard_store,
+                &refresh_clipboard_state,
+                history_limit,
+            )
+            .await
+            {
                 Ok(()) => last_error = None,
                 Err(err) => {
                     let should_log = last_error.as_deref() != Some(err.as_str());
@@ -60,8 +68,10 @@ async fn run_async(history_limit: usize) -> anyhow::Result<()> {
                     last_error = Some(err);
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_millis(CLIPBOARD_REFRESH_INTERVAL_MS))
-                .await;
+            tokio::select! {
+                _ = refresh_notify.notified() => {},
+                _ = tokio::time::sleep(std::time::Duration::from_millis(CLIPBOARD_REFRESH_INTERVAL_MS)) => {},
+            }
         }
     });
 
@@ -69,8 +79,10 @@ async fn run_async(history_limit: usize) -> anyhow::Result<()> {
     tokio::spawn(async move {
         loop {
             let _ = refresh_launcher_entries(&refresh_launcher_state).await;
-            tokio::time::sleep(std::time::Duration::from_millis(LAUNCHER_REFRESH_INTERVAL_MS))
-                .await;
+            tokio::time::sleep(std::time::Duration::from_millis(
+                LAUNCHER_REFRESH_INTERVAL_MS,
+            ))
+            .await;
         }
     });
 
@@ -139,21 +151,21 @@ async fn dispatch(
             let entries = clipboard_entries.read().await;
             DaemonResponse::ClipboardHistory(entries.iter().take(limit).cloned().collect())
         }
-        DaemonRequest::GetClipboardContent { id } => {
-            match store.get_by_id(id) {
-                Ok(Some(entry)) => DaemonResponse::ClipboardContent(entry.full_content()),
-                Ok(None) => DaemonResponse::Error(format!("entry {id} not found")),
-                Err(e) => DaemonResponse::Error(e.to_string()),
-            }
-        }
+        DaemonRequest::GetClipboardContent { id } => match store.get_by_id(id) {
+            Ok(Some(entry)) => DaemonResponse::ClipboardContent(entry.full_content()),
+            Ok(None) => DaemonResponse::Error(format!("entry {id} not found")),
+            Err(e) => DaemonResponse::Error(e.to_string()),
+        },
         DaemonRequest::GetLauncherItems => {
             let entries = launcher_entries.read().await;
             DaemonResponse::LauncherItems(entries.clone())
         }
-        DaemonRequest::PasteClipboard { id } => match backend::paste_clipboard(Arc::clone(store), id).await {
-            Ok(()) => DaemonResponse::ClipboardPasted,
-            Err(err) => DaemonResponse::Error(err.to_string()),
-        },
+        DaemonRequest::PasteClipboard { id } => {
+            match backend::paste_clipboard(Arc::clone(store), id).await {
+                Ok(()) => DaemonResponse::ClipboardPasted,
+                Err(err) => DaemonResponse::Error(err.to_string()),
+            }
+        }
     }
 }
 

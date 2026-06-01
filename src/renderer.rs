@@ -81,7 +81,13 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(width: u32, height: u32, scale: f32, theme: crate::config::ThemeConfig, layout: crate::config::LayoutConfig) -> Self {
+    pub fn new(
+        width: u32,
+        height: u32,
+        scale: f32,
+        theme: crate::config::ThemeConfig,
+        layout: crate::config::LayoutConfig,
+    ) -> Self {
         let primary = MappedFont::open(PRIMARY_FONT_PATHS[0])
             .unwrap_or_else(|| panic!("No primary font found at {}", PRIMARY_FONT_PATHS[0]));
 
@@ -346,9 +352,10 @@ impl Renderer {
         buf
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_text(
         &self,
-        buf: &mut Vec<u32>,
+        buf: &mut [u32],
         text: &str,
         x: u32,
         y: u32,
@@ -448,26 +455,16 @@ impl Renderer {
         let bar_h = line_height + (8.0 * self.scale).round() as u32;
         let bar_y = self.height.saturating_sub(bar_h);
         let content_area = bar_y.saturating_sub(pad_y);
-        let visible_lines = if line_height > 0 {
-            (content_area / line_height) as usize
-        } else {
-            0
-        };
+        let visible_lines = content_area.checked_div(line_height).unwrap_or(0) as usize;
 
         let mut lines: Vec<(String, f32, u32)> = Vec::new();
 
         if let Some(content) = full_content {
             if !content.is_empty() {
-                self.compute_wrapped_lines(
-                    &mut lines,
-                    content,
-                    font_size as f32,
-                    content_width,
-                    FG,
-                );
+                self.compute_wrapped_lines(&mut lines, content, font_size, content_width, FG);
             }
         } else {
-            self.compute_wrapped_lines(&mut lines, &item.name, font_size as f32, content_width, FG);
+            self.compute_wrapped_lines(&mut lines, &item.name, font_size, content_width, FG);
 
             let meta_text = if let Some(ref meta) = item.entry.inline_meta {
                 if !meta.is_empty() {
@@ -484,13 +481,7 @@ impl Renderer {
             };
 
             if let Some(meta) = meta_text {
-                self.compute_wrapped_lines(
-                    &mut lines,
-                    meta,
-                    meta_size as f32,
-                    content_width,
-                    FG_DIM,
-                );
+                self.compute_wrapped_lines(&mut lines, meta, meta_size, content_width, FG_DIM);
             }
         }
 
@@ -578,8 +569,8 @@ impl Renderer {
         width.round() as u32
     }
 
-    fn draw_rect(&self, buf: &mut Vec<u32>, x: u32, y: u32, w: u32, h: u32, color: u32) {
-        let a = (color >> 24) as u32;
+    fn draw_rect(&self, buf: &mut [u32], x: u32, y: u32, w: u32, h: u32, color: u32) {
+        let a = color >> 24;
         if a == 0xFF {
             for row in y..(y + h).min(self.height) {
                 let start = (row * self.width + x) as usize;

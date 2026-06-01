@@ -13,8 +13,8 @@ pub fn open_store() -> Result<SharedStore, String> {
         .map_err(|err| err.to_string())
 }
 
-pub fn spawn_watcher(store: SharedStore) {
-    crate::clipboard::watcher::spawn_watcher(store);
+pub fn spawn_watcher(store: SharedStore, notify: std::sync::Arc<tokio::sync::Notify>) {
+    crate::clipboard::watcher::spawn_watcher(store, notify);
 }
 
 pub fn load_clipboard_history(store: &SharedStore, limit: usize) -> Result<Vec<EntryMeta>, String> {
@@ -34,7 +34,10 @@ pub async fn paste_clipboard(store: SharedStore, id: u64) -> Result<(), String> 
     let mime = entry.mime_type.clone();
     tokio::task::spawn_blocking(move || {
         let options = Options::new();
-        options.copy(Source::Bytes(data.to_vec().into()), MimeType::Specific(mime))
+        options.copy(
+            Source::Bytes(data.to_vec().into()),
+            MimeType::Specific(mime),
+        )
     })
     .await
     .map_err(|err| err.to_string())?
@@ -50,7 +53,8 @@ fn db_path() -> anyhow::Result<PathBuf> {
 
     let path = base.join("luncher").join("history.redb");
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
     }
     Ok(path)
 }

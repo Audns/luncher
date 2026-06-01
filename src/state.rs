@@ -21,7 +21,6 @@ use smithay_client_toolkit::{
     },
     shm::{Shm, ShmHandler, slot::SlotPool},
 };
-use std::sync::mpsc::Receiver;
 use wayland_client::{
     Connection, Dispatch, QueueHandle,
     globals::GlobalList,
@@ -63,7 +62,6 @@ pub struct AppState {
     pub cursor: usize,
     pub clipboard_mode: bool,
     pub mode: String,
-    pub background_updates: Option<Receiver<BackgroundUpdate>>,
     pub last_background_error: Option<String>,
     pub preview_mode: bool,
     pub preview_content: Option<String>,
@@ -72,6 +70,7 @@ pub struct AppState {
 }
 
 impl AppState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         globals: &GlobalList,
         qh: &QueueHandle<Self>,
@@ -79,7 +78,6 @@ impl AppState {
         items: Vec<LauncherItem>,
         dmenu_mode: bool,
         clipboard_mode: bool,
-        background_updates: Option<Receiver<BackgroundUpdate>>,
         case_sensitive: bool,
         mode: String,
     ) -> Self {
@@ -140,52 +138,18 @@ impl AppState {
             query: String::new(),
             selected: 0,
             qh: qh.clone(),
-            renderer: renderer,
+            renderer,
             loop_handle,
             visible,
             dmenu_mode,
             cursor: 0,
             clipboard_mode,
-            background_updates,
             last_background_error: None,
             preview_mode: false,
             preview_content: None,
             preview_scroll: 0,
             preview_max_scroll: 0,
             mode,
-        }
-    }
-
-    pub fn apply_pending_background_updates(&mut self) {
-        let Some(receiver) = &self.background_updates else {
-            return;
-        };
-
-        let mut latest_items = None;
-        let mut latest_error = None;
-        while let Ok(update) = receiver.try_recv() {
-            match update {
-                BackgroundUpdate::Items(items) => {
-                    latest_items = Some(items);
-                    latest_error = None;
-                }
-                BackgroundUpdate::Error(err) => latest_error = Some(err),
-            }
-        }
-
-        if let Some(items) = latest_items {
-            self.last_background_error = None;
-            if self.search.replace_items(items) {
-                self.needs_redraw = true;
-            }
-        }
-
-        if let Some(err) = latest_error {
-            let should_log = self.last_background_error.as_deref() != Some(err.as_str());
-            self.last_background_error = Some(err.clone());
-            if should_log {
-                eprintln!("[daemon] refresh failed: {err}");
-            }
         }
     }
 
@@ -306,7 +270,7 @@ impl AppState {
                             let id_str = item.entry.command.clone();
                             std::thread::spawn(move || {
                                 let rt = tokio::runtime::Runtime::new().unwrap();
-                                let _ = rt.block_on(async move {
+                                rt.block_on(async move {
                                     if let Ok(id) = id_str.parse::<u64>() {
                                         let _ = crate::clipboard::client::paste_clipboard(id).await;
                                     }
@@ -320,55 +284,37 @@ impl AppState {
                     }
                     self.exit = true;
                 }
-                Keysym::Up => {
-                    if self.preview_scroll > 0 {
-                        self.preview_scroll -= 1;
-                        self.needs_redraw = true;
-                    }
+                Keysym::Up if self.preview_scroll > 0 => {
+                    self.preview_scroll -= 1;
+                    self.needs_redraw = true;
                 }
-                Keysym::Down => {
-                    if self.preview_scroll < self.preview_max_scroll {
-                        self.preview_scroll += 1;
-                        self.needs_redraw = true;
-                    }
+                Keysym::Down if self.preview_scroll < self.preview_max_scroll => {
+                    self.preview_scroll += 1;
+                    self.needs_redraw = true;
                 }
-                Keysym::p if ctrl => {
-                    if self.preview_scroll > 0 {
-                        self.preview_scroll -= 1;
-                        self.needs_redraw = true;
-                    }
+                Keysym::p if ctrl && self.preview_scroll > 0 => {
+                    self.preview_scroll -= 1;
+                    self.needs_redraw = true;
                 }
-                Keysym::n if ctrl => {
-                    if self.preview_scroll < self.preview_max_scroll {
-                        self.preview_scroll += 1;
-                        self.needs_redraw = true;
-                    }
+                Keysym::n if ctrl && self.preview_scroll < self.preview_max_scroll => {
+                    self.preview_scroll += 1;
+                    self.needs_redraw = true;
                 }
-                Keysym::Page_Up => {
-                    if self.preview_scroll > 0 {
-                        self.preview_scroll = self.preview_scroll.saturating_sub(10);
-                        self.needs_redraw = true;
-                    }
+                Keysym::Page_Up if self.preview_scroll > 0 => {
+                    self.preview_scroll = self.preview_scroll.saturating_sub(10);
+                    self.needs_redraw = true;
                 }
-                Keysym::Page_Down => {
-                    if self.preview_scroll < self.preview_max_scroll {
-                        self.preview_scroll =
-                            (self.preview_scroll + 10).min(self.preview_max_scroll);
-                        self.needs_redraw = true;
-                    }
+                Keysym::Page_Down if self.preview_scroll < self.preview_max_scroll => {
+                    self.preview_scroll = (self.preview_scroll + 10).min(self.preview_max_scroll);
+                    self.needs_redraw = true;
                 }
-                Keysym::u if ctrl => {
-                    if self.preview_scroll > 0 {
-                        self.preview_scroll = self.preview_scroll.saturating_sub(10);
-                        self.needs_redraw = true;
-                    }
+                Keysym::u if ctrl && self.preview_scroll > 0 => {
+                    self.preview_scroll = self.preview_scroll.saturating_sub(10);
+                    self.needs_redraw = true;
                 }
-                Keysym::d if ctrl => {
-                    if self.preview_scroll < self.preview_max_scroll {
-                        self.preview_scroll =
-                            (self.preview_scroll + 10).min(self.preview_max_scroll);
-                        self.needs_redraw = true;
-                    }
+                Keysym::d if ctrl && self.preview_scroll < self.preview_max_scroll => {
+                    self.preview_scroll = (self.preview_scroll + 10).min(self.preview_max_scroll);
+                    self.needs_redraw = true;
                 }
                 _ => {}
             }
@@ -386,19 +332,19 @@ impl AppState {
                     self.preview_mode = !self.preview_mode;
                     if self.preview_mode {
                         if self.clipboard_mode {
-                            if let Some(item) = self.search.results.get(self.selected) {
-                                if let Ok(_id) = item.entry.command.parse::<u64>() {
-                                    let id_clone = item.entry.command.clone();
-                                    let rt = tokio::runtime::Runtime::new().unwrap();
-                                    let content = rt.block_on(async move {
-                                        crate::clipboard::client::get_clipboard_content(
-                                            id_clone.parse::<u64>().unwrap_or(0),
-                                        )
-                                        .await
-                                        .unwrap_or_else(|e| format!("[Error: {e}]"))
-                                    });
-                                    self.preview_content = Some(content);
-                                }
+                            if let Some(item) = self.search.results.get(self.selected)
+                                && let Ok(_id) = item.entry.command.parse::<u64>()
+                            {
+                                let id_clone = item.entry.command.clone();
+                                let rt = tokio::runtime::Runtime::new().unwrap();
+                                let content = rt.block_on(async move {
+                                    crate::clipboard::client::get_clipboard_content(
+                                        id_clone.parse::<u64>().unwrap_or(0),
+                                    )
+                                    .await
+                                    .unwrap_or_else(|e| format!("[Error: {e}]"))
+                                });
+                                self.preview_content = Some(content);
                             }
                         } else {
                             self.preview_content = None;
@@ -419,7 +365,7 @@ impl AppState {
                         let id_str = item.entry.command.clone();
                         std::thread::spawn(move || {
                             let rt = tokio::runtime::Runtime::new().unwrap();
-                            let _ = rt.block_on(async move {
+                            rt.block_on(async move {
                                 if let Ok(id) = id_str.parse::<u64>() {
                                     let _ = crate::clipboard::client::paste_clipboard(id).await;
                                 }
@@ -552,14 +498,15 @@ impl AppState {
                     let mut chars = s.chars();
                     let c = chars.next();
                     if chars.next().is_none() { c } else { None }
-                }) {
-                    if !ctrl && !alt && !ch.is_control() {
-                        self.query.insert(self.cursor, ch);
-                        self.cursor += ch.len_utf8();
-                        self.selected = 0;
-                        self.search.update(&self.query);
-                        self.needs_redraw = true;
-                    }
+                }) && !ctrl
+                    && !alt
+                    && !ch.is_control()
+                {
+                    self.query.insert(self.cursor, ch);
+                    self.cursor += ch.len_utf8();
+                    self.selected = 0;
+                    self.search.update(&self.query);
+                    self.needs_redraw = true;
                 }
             }
         }
@@ -716,10 +663,10 @@ impl SeatHandler for AppState {
         _: wayland_client::protocol::wl_seat::WlSeat,
         capability: Capability,
     ) {
-        if capability == Capability::Keyboard {
-            if let Some(kbd) = self.keyboard.take() {
-                kbd.release();
-            }
+        if capability == Capability::Keyboard
+            && let Some(kbd) = self.keyboard.take()
+        {
+            kbd.release();
         }
     }
 

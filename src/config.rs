@@ -185,21 +185,47 @@ impl Scripts {
     }
 }
 
-fn default_history_limit() -> usize { 50 }
+fn default_history_limit() -> usize {
+    50
+}
 
-fn default_font_size() -> f32 { 22.0 }
-fn default_hint_size() -> f32 { 22.0 }
-fn default_row_h() -> u32 { 58 }
-fn default_input_h() -> u32 { 45 }
-fn default_pad_x() -> u32 { 16 }
-fn default_input_letter_spacing() -> f32 { 0.5 }
+fn default_font_size() -> f32 {
+    22.0
+}
+fn default_hint_size() -> f32 {
+    22.0
+}
+fn default_row_h() -> u32 {
+    58
+}
+fn default_input_h() -> u32 {
+    45
+}
+fn default_pad_x() -> u32 {
+    16
+}
+fn default_input_letter_spacing() -> f32 {
+    0.5
+}
 
-fn default_bg() -> u32 { 0xFF1E1E2E }
-fn default_fg() -> u32 { 0xE6E6E6FF }
-fn default_fg_dim() -> u32 { 0x73C0CAF5 }
-fn default_fg_hint() -> u32 { 0x4DC0CAF5 }
-fn default_sel_bg() -> u32 { 0x15C0CAF5 }
-fn default_line() -> u32 { 0xFF2A2A3E }
+fn default_bg() -> u32 {
+    0xFF1E1E2E
+}
+fn default_fg() -> u32 {
+    0xE6E6E6FF
+}
+fn default_fg_dim() -> u32 {
+    0x73C0CAF5
+}
+fn default_fg_hint() -> u32 {
+    0x4DC0CAF5
+}
+fn default_sel_bg() -> u32 {
+    0x15C0CAF5
+}
+fn default_line() -> u32 {
+    0xFF2A2A3E
+}
 
 pub fn config_dir() -> PathBuf {
     dirs::config_dir()

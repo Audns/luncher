@@ -1,7 +1,7 @@
 use crate::app;
 use crate::clipboard::client;
 use crate::clipboard::models::{EntryKind, EntryMeta};
-use crate::config::{Config, Entry};
+use crate::config::Entry;
 use crate::search::LauncherItem;
 use chrono::{Local, TimeZone};
 
@@ -20,17 +20,7 @@ pub fn run(rt: tokio::runtime::Runtime) {
     );
 }
 
-pub async fn load_items() -> Result<Vec<LauncherItem>, String> {
-    let entries = load_history().await?;
-    Ok(entries_to_items(entries))
-}
-
-async fn load_history() -> Result<Vec<EntryMeta>, String> {
-    let cfg = Config::load();
-    client::get_clipboard_history(cfg.clipboard.history_limit).await
-}
-
-fn entries_to_items(entries: Vec<EntryMeta>) -> Vec<LauncherItem> {
+pub fn entries_to_items(entries: Vec<EntryMeta>) -> Vec<LauncherItem> {
     entries
         .into_iter()
         .map(|entry| {

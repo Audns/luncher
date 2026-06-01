@@ -27,6 +27,7 @@ pub async fn ensure_daemon() -> Result<(), String> {
     Err(format!("connecting to daemon at {}", socket.display()))
 }
 
+#[allow(dead_code)]
 pub async fn get_clipboard_history(limit: usize) -> Result<Vec<EntryMeta>, String> {
     ensure_daemon().await?;
     match request(DaemonRequest::GetClipboardHistory { limit }).await? {
@@ -67,10 +68,19 @@ pub async fn request(req: DaemonRequest) -> Result<DaemonResponse, String> {
     let mut stream = UnixStream::connect(&socket)
         .await
         .map_err(|err| format!("connecting to daemon at {}: {err}", socket.display()))?;
+    request_on_stream(&mut stream, req).await
+}
 
+pub async fn request_on_stream(
+    stream: &mut UnixStream,
+    req: DaemonRequest,
+) -> Result<DaemonResponse, String> {
     let encoded = postcard::to_allocvec(&req).map_err(|err| err.to_string())?;
     let len = (encoded.len() as u32).to_le_bytes();
-    stream.write_all(&len).await.map_err(|err| err.to_string())?;
+    stream
+        .write_all(&len)
+        .await
+        .map_err(|err| err.to_string())?;
     stream
         .write_all(&encoded)
         .await
@@ -91,7 +101,7 @@ pub async fn request(req: DaemonRequest) -> Result<DaemonResponse, String> {
     postcard::from_bytes(&body).map_err(|err| err.to_string())
 }
 
-fn socket_path() -> anyhow::Result<PathBuf> {
+pub fn socket_path() -> anyhow::Result<PathBuf> {
     let base = dirs::runtime_dir().ok_or_else(|| anyhow::anyhow!("XDG_RUNTIME_DIR not set"))?;
     Ok(base.join("luncher.sock"))
 }

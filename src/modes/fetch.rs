@@ -16,17 +16,17 @@ pub fn run(pattern: &str, case_sensitive: bool, only_script: bool, only_launcher
 
     let (script_results, launcher_results) = if only_script {
         let mut search = FuzzySearch::new(script_items.clone(), case_sensitive);
-        search.update(&pattern);
+        search.update(pattern);
         (search.results, vec![])
     } else if only_launcher {
         let mut search = FuzzySearch::new(launcher_items.clone(), case_sensitive);
-        search.update(&pattern);
+        search.update(pattern);
         (vec![], search.results)
     } else {
         let mut all_items: Vec<LauncherItem> = script_items.clone();
         all_items.extend(launcher_items.clone());
         let mut search = FuzzySearch::new(all_items, case_sensitive);
-        search.update(&pattern);
+        search.update(pattern);
 
         let mut script_map = serde_json::Map::new();
         let mut launcher_map = serde_json::Map::new();

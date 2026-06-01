@@ -81,7 +81,15 @@ fn run_with_runtime(rt: tokio::runtime::Runtime) {
         }
         "fetch" => {
             if let Some(pattern) = cli.fix.as_deref() {
-                println!("{}", modes::fetch::run(pattern, cfg.case_sensitive, cli.only_script, cli.only_launcher));
+                println!(
+                    "{}",
+                    modes::fetch::run(
+                        pattern,
+                        cfg.case_sensitive,
+                        cli.only_script,
+                        cli.only_launcher
+                    )
+                );
             } else {
                 eprintln!("fetch mode requires -f/--fix argument");
                 std::process::exit(1);

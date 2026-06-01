@@ -115,7 +115,7 @@ impl FuzzySearch {
             self.all_items.clone()
         } else {
             snapshot
-                .matched_items(..snapshot.matched_item_count().min(50) as u32)
+                .matched_items(..snapshot.matched_item_count().min(50))
                 .map(|i| i.data.clone())
                 .collect()
         };

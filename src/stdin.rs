@@ -11,7 +11,7 @@ pub fn read_stdin() -> Option<Vec<LauncherItem>> {
     let items = stdin
         .lock()
         .lines()
-        .filter_map(|l| l.ok())
+        .map_while(Result::ok)
         .filter(|l| !l.trim().is_empty())
         .map(|line| {
             let display = if let Some(tab_pos) = line.find('\t') {

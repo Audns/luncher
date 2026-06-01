@@ -1,9 +1,10 @@
 use calloop::EventLoop;
 use calloop_wayland_source::WaylandSource;
 use std::time::Duration;
-use wayland_client::{globals::registry_queue_init, Connection};
+use wayland_client::{Connection, globals::registry_queue_init};
 
 use crate::{
+    protocol::{DaemonRequest, DaemonResponse},
     search::LauncherItem,
     state::{AppState, BackgroundUpdate},
 };
@@ -17,7 +18,7 @@ pub enum RemoteSource {
 impl RemoteSource {
     fn refresh_interval(self) -> Duration {
         match self {
-            Self::Clipboard => Duration::from_millis(500),
+            Self::Clipboard => Duration::from_millis(50),
             Self::Launcher => Duration::from_secs(5),
         }
     }
@@ -39,10 +40,33 @@ pub fn run(
     let mut event_loop: EventLoop<AppState> = EventLoop::try_new().unwrap();
     let loop_handle = event_loop.handle();
     let cfg = crate::config::Config::load();
-    let remote_updates = match (remote_source, remote_handle) {
-        (Some(source), Some(handle)) => Some(spawn_remote_refresh_worker(source, handle)),
-        _ => None,
-    };
+
+    if let (Some(source), Some(handle)) = (remote_source, remote_handle) {
+        let (tx, rx) = calloop::channel::channel();
+        loop_handle
+            .insert_source(rx, |event, _, app| {
+                if let calloop::channel::Event::Msg(update) = event {
+                    match update {
+                        BackgroundUpdate::Items(items) => {
+                            app.last_background_error = None;
+                            if app.search.replace_items(items) {
+                                app.needs_redraw = true;
+                            }
+                        }
+                        BackgroundUpdate::Error(err) => {
+                            let should_log =
+                                app.last_background_error.as_deref() != Some(err.as_str());
+                            app.last_background_error = Some(err.clone());
+                            if should_log {
+                                eprintln!("[daemon] refresh failed: {err}");
+                            }
+                        }
+                    }
+                }
+            })
+            .unwrap();
+        spawn_remote_refresh_worker(source, handle, tx);
+    }
 
     let mut app = AppState::new(
         &globals,
@@ -51,7 +75,6 @@ pub fn run(
         items,
         dmenu_mode,
         clipboard_mode,
-        remote_updates,
         cfg.case_sensitive,
         mode,
     );
@@ -64,12 +87,11 @@ pub fn run(
 
     loop {
         event_loop
-            .dispatch(Some(Duration::from_millis(250)), &mut app)
+            .dispatch(Some(Duration::from_millis(16)), &mut app)
             .unwrap();
         if app.exit {
             break;
         }
-        app.apply_pending_background_updates();
         app.search.tick();
         if app.needs_redraw && app.configured {
             app.draw(&app.qh.clone());
@@ -84,26 +106,56 @@ pub fn run(
 fn spawn_remote_refresh_worker(
     source: RemoteSource,
     handle: tokio::runtime::Handle,
-) -> std::sync::mpsc::Receiver<BackgroundUpdate> {
-    let (tx, rx) = std::sync::mpsc::channel();
-
-    std::thread::spawn(move || loop {
-        let update = match source {
-            RemoteSource::Clipboard => handle.block_on(crate::modes::clipboard::load_items()),
-            RemoteSource::Launcher => handle.block_on(crate::launcher::client::load_items()),
-        };
-
-        let update = match update {
-            Ok(items) => BackgroundUpdate::Items(items),
-            Err(err) => BackgroundUpdate::Error(err),
-        };
-
-        if tx.send(update).is_err() {
-            break;
+    tx: calloop::channel::Sender<BackgroundUpdate>,
+) {
+    handle.spawn(async move {
+        if crate::clipboard::client::ensure_daemon().await.is_err() {
+            return;
         }
+        let socket = match crate::clipboard::client::socket_path() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let mut stream = match tokio::net::UnixStream::connect(&socket).await {
+            Ok(s) => s,
+            Err(_) => return,
+        };
 
-        std::thread::sleep(source.refresh_interval());
+        let history_limit = crate::config::Config::load().clipboard.history_limit;
+        loop {
+            let resp = match source {
+                RemoteSource::Clipboard => {
+                    crate::clipboard::client::request_on_stream(
+                        &mut stream,
+                        DaemonRequest::GetClipboardHistory {
+                            limit: history_limit,
+                        },
+                    )
+                    .await
+                }
+                RemoteSource::Launcher => {
+                    crate::clipboard::client::request_on_stream(
+                        &mut stream,
+                        DaemonRequest::GetLauncherItems,
+                    )
+                    .await
+                }
+            };
+
+            let update = match resp {
+                Ok(DaemonResponse::ClipboardHistory(entries)) => {
+                    BackgroundUpdate::Items(crate::modes::clipboard::entries_to_items(entries))
+                }
+                Ok(DaemonResponse::LauncherItems(items)) => BackgroundUpdate::Items(items),
+                Ok(other) => BackgroundUpdate::Error(format!("unexpected: {other:?}")),
+                Err(err) => BackgroundUpdate::Error(err),
+            };
+
+            if tx.send(update).is_err() {
+                break;
+            }
+
+            tokio::time::sleep(source.refresh_interval()).await;
+        }
     });
-
-    rx
 }
