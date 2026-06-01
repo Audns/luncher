@@ -268,10 +268,14 @@ impl AppState {
                             crate::executor::print_selection(&item.entry.command);
                         } else if self.clipboard_mode {
                             let id_str = item.entry.command.clone();
+                            let should_bump = self.selected != 0;
                             std::thread::spawn(move || {
                                 let rt = tokio::runtime::Runtime::new().unwrap();
                                 rt.block_on(async move {
                                     if let Ok(id) = id_str.parse::<u64>() {
+                                        if should_bump {
+                                            let _ = crate::clipboard::client::bump_clipboard_entry(id).await;
+                                        }
                                         let _ = crate::clipboard::client::paste_clipboard(id).await;
                                     }
                                 });
@@ -363,10 +367,14 @@ impl AppState {
                         crate::executor::print_selection(&item.entry.command);
                     } else if self.clipboard_mode {
                         let id_str = item.entry.command.clone();
+                        let should_bump = self.selected != 0;
                         std::thread::spawn(move || {
                             let rt = tokio::runtime::Runtime::new().unwrap();
                             rt.block_on(async move {
                                 if let Ok(id) = id_str.parse::<u64>() {
+                                    if should_bump {
+                                        let _ = crate::clipboard::client::bump_clipboard_entry(id).await;
+                                    }
                                     let _ = crate::clipboard::client::paste_clipboard(id).await;
                                 }
                             });

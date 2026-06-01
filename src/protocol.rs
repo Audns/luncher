@@ -10,6 +10,7 @@ pub enum DaemonRequest {
     GetClipboardContent { id: u64 },
     GetLauncherItems,
     PasteClipboard { id: u64 },
+    BumpClipboardEntry { id: u64 },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,5 +20,6 @@ pub enum DaemonResponse {
     ClipboardContent(String),
     LauncherItems(Vec<LauncherItem>),
     ClipboardPasted,
+    ClipboardBumped,
     Error(String),
 }

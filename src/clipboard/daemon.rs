@@ -30,6 +30,7 @@ async fn run_async(history_limit: usize) -> anyhow::Result<()> {
     backend::spawn_watcher(Arc::clone(&store), Arc::clone(&clipboard_notify));
 
     let clipboard_entries: SharedClipboardEntries = Arc::new(RwLock::new(Vec::new()));
+    let bumped_entries: SharedClipboardEntries = Arc::new(RwLock::new(Vec::new()));
     let launcher_entries: SharedLauncherEntries = Arc::new(RwLock::new(Vec::new()));
     let _ = refresh_clipboard_entries(&store, &clipboard_entries, history_limit).await;
     let _ = refresh_launcher_entries(&launcher_entries).await;
@@ -90,9 +91,10 @@ async fn run_async(history_limit: usize) -> anyhow::Result<()> {
         let (stream, _) = listener.accept().await?;
         let store = Arc::clone(&store);
         let clipboard_entries = Arc::clone(&clipboard_entries);
+        let bumped_entries = Arc::clone(&bumped_entries);
         let launcher_entries = Arc::clone(&launcher_entries);
         tokio::spawn(async move {
-            let _ = handle_connection(stream, store, clipboard_entries, launcher_entries).await;
+            let _ = handle_connection(stream, store, clipboard_entries, bumped_entries, launcher_entries).await;
         });
     }
 }
@@ -116,6 +118,7 @@ async fn handle_connection(
     mut stream: UnixStream,
     store: SharedStore,
     clipboard_entries: SharedClipboardEntries,
+    bumped_entries: SharedClipboardEntries,
     launcher_entries: SharedLauncherEntries,
 ) -> anyhow::Result<()> {
     loop {
@@ -131,7 +134,7 @@ async fn handle_connection(
         stream.read_exact(&mut body).await?;
 
         let req: DaemonRequest = postcard::from_bytes(&body)?;
-        let response = dispatch(req, &store, &clipboard_entries, &launcher_entries).await;
+        let response = dispatch(req, &store, &clipboard_entries, &bumped_entries, &launcher_entries).await;
         let encoded = postcard::to_allocvec(&response)?;
         let resp_len = (encoded.len() as u32).to_le_bytes();
         stream.write_all(&resp_len).await?;
@@ -143,13 +146,18 @@ async fn dispatch(
     req: DaemonRequest,
     store: &SharedStore,
     clipboard_entries: &SharedClipboardEntries,
+    bumped_entries: &SharedClipboardEntries,
     launcher_entries: &SharedLauncherEntries,
 ) -> DaemonResponse {
     match req {
         DaemonRequest::Ping => DaemonResponse::Pong,
         DaemonRequest::GetClipboardHistory { limit } => {
+            let bumped = bumped_entries.read().await;
             let entries = clipboard_entries.read().await;
-            DaemonResponse::ClipboardHistory(entries.iter().take(limit).cloned().collect())
+            let mut merged = Vec::with_capacity(bumped.len() + entries.len());
+            merged.extend(bumped.iter().cloned());
+            merged.extend(entries.iter().cloned());
+            DaemonResponse::ClipboardHistory(merged.into_iter().take(limit).collect())
         }
         DaemonRequest::GetClipboardContent { id } => match store.get_by_id(id) {
             Ok(Some(entry)) => DaemonResponse::ClipboardContent(entry.full_content()),
@@ -164,6 +172,21 @@ async fn dispatch(
             match backend::paste_clipboard(Arc::clone(store), id).await {
                 Ok(()) => DaemonResponse::ClipboardPasted,
                 Err(err) => DaemonResponse::Error(err.to_string()),
+            }
+        }
+        DaemonRequest::BumpClipboardEntry { id } => {
+            let mut bumped = bumped_entries.write().await;
+            let entries = clipboard_entries.read().await;
+
+            let target = bumped.iter().find(|e| e.id == id)
+                .cloned()
+                .or_else(|| entries.iter().find(|e| e.id == id).cloned());
+
+            if let Some(entry) = target {
+                bumped.insert(0, entry);
+                DaemonResponse::ClipboardBumped
+            } else {
+                DaemonResponse::Error(format!("entry {id} not found"))
             }
         }
     }
