@@ -154,9 +154,13 @@ async fn dispatch(
         DaemonRequest::GetClipboardHistory { limit } => {
             let bumped = bumped_entries.read().await;
             let entries = clipboard_entries.read().await;
-            let mut merged = Vec::with_capacity(bumped.len() + entries.len());
-            merged.extend(bumped.iter().cloned());
-            merged.extend(entries.iter().cloned());
+            let mut by_id: std::collections::HashMap<u64, EntryMeta> =
+                entries.iter().map(|e| (e.id, e.clone())).collect();
+            for b in bumped.iter() {
+                by_id.insert(b.id, b.clone());
+            }
+            let mut merged: Vec<EntryMeta> = by_id.into_values().collect();
+            merged.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
             DaemonResponse::ClipboardHistory(merged.into_iter().take(limit).collect())
         }
         DaemonRequest::GetClipboardContent { id } => match store.get_by_id(id) {
@@ -182,7 +186,9 @@ async fn dispatch(
                 .cloned()
                 .or_else(|| entries.iter().find(|e| e.id == id).cloned());
 
-            if let Some(entry) = target {
+            if let Some(mut entry) = target {
+                entry.timestamp = crate::clipboard::models::now_micros();
+                bumped.retain(|e| e.id != id);
                 bumped.insert(0, entry);
                 DaemonResponse::ClipboardBumped
             } else {
