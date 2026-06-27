@@ -20,16 +20,15 @@ impl SingleInstance {
                 socket_path,
             })),
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-                match std::os::unix::net::UnixStream::connect(&socket_path) {
-                    Ok(_) => Ok(None),
-                    Err(_) => {
-                        std::fs::remove_file(&socket_path)?;
-                        let listener = UnixListener::bind(&socket_path)?;
-                        Ok(Some(Self {
-                            _listener: listener,
-                            socket_path,
-                        }))
-                    }
+                if let Ok(_) = std::os::unix::net::UnixStream::connect(&socket_path) {
+                    Ok(None)
+                } else {
+                    std::fs::remove_file(&socket_path)?;
+                    let listener = UnixListener::bind(&socket_path)?;
+                    Ok(Some(Self {
+                        _listener: listener,
+                        socket_path,
+                    }))
                 }
             }
             Err(e) => Err(e),

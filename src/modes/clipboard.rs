@@ -94,9 +94,8 @@ fn format_timestamp(timestamp_micros: u64) -> String {
     let secs = (timestamp_micros / 1_000_000) as i64;
     let nanos = ((timestamp_micros % 1_000_000) * 1_000) as u32;
 
-    Local
-        .timestamp_opt(secs, nanos)
-        .single()
-        .map(|dt| dt.format("%m-%d-%H:%M").to_string())
-        .unwrap_or_else(|| "unknown date".to_string())
+    Local.timestamp_opt(secs, nanos).single().map_or_else(
+        || "unknown date".to_string(),
+        |dt| dt.format("%m-%d-%H:%M").to_string(),
+    )
 }

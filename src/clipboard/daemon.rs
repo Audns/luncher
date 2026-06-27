@@ -70,8 +70,8 @@ async fn run_async(history_limit: usize) -> anyhow::Result<()> {
                 }
             }
             tokio::select! {
-                _ = refresh_notify.notified() => {},
-                _ = tokio::time::sleep(std::time::Duration::from_millis(CLIPBOARD_REFRESH_INTERVAL_MS)) => {},
+                () = refresh_notify.notified() => {},
+                () = tokio::time::sleep(std::time::Duration::from_millis(CLIPBOARD_REFRESH_INTERVAL_MS)) => {},
             }
         }
     });
@@ -94,7 +94,14 @@ async fn run_async(history_limit: usize) -> anyhow::Result<()> {
         let bumped_entries = Arc::clone(&bumped_entries);
         let launcher_entries = Arc::clone(&launcher_entries);
         tokio::spawn(async move {
-            let _ = handle_connection(stream, store, clipboard_entries, bumped_entries, launcher_entries).await;
+            let _ = handle_connection(
+                stream,
+                store,
+                clipboard_entries,
+                bumped_entries,
+                launcher_entries,
+            )
+            .await;
         });
     }
 }
@@ -134,7 +141,14 @@ async fn handle_connection(
         stream.read_exact(&mut body).await?;
 
         let req: DaemonRequest = postcard::from_bytes(&body)?;
-        let response = dispatch(req, &store, &clipboard_entries, &bumped_entries, &launcher_entries).await;
+        let response = dispatch(
+            req,
+            &store,
+            &clipboard_entries,
+            &bumped_entries,
+            &launcher_entries,
+        )
+        .await;
         let encoded = postcard::to_allocvec(&response)?;
         let resp_len = (encoded.len() as u32).to_le_bytes();
         stream.write_all(&resp_len).await?;
@@ -175,14 +189,16 @@ async fn dispatch(
         DaemonRequest::PasteClipboard { id } => {
             match backend::paste_clipboard(Arc::clone(store), id).await {
                 Ok(()) => DaemonResponse::ClipboardPasted,
-                Err(err) => DaemonResponse::Error(err.to_string()),
+                Err(err) => DaemonResponse::Error(err.clone()),
             }
         }
         DaemonRequest::BumpClipboardEntry { id } => {
             let mut bumped = bumped_entries.write().await;
             let entries = clipboard_entries.read().await;
 
-            let target = bumped.iter().find(|e| e.id == id)
+            let target = bumped
+                .iter()
+                .find(|e| e.id == id)
                 .cloned()
                 .or_else(|| entries.iter().find(|e| e.id == id).cloned());
 

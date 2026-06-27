@@ -87,7 +87,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
         state: &mut Self,
         registry: &wl_registry::WlRegistry,
         event: wl_registry::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         qh: &QueueHandle<Self>,
     ) {
@@ -132,7 +132,7 @@ impl Dispatch<wl_seat::WlSeat, ()> for State {
         _state: &mut Self,
         _: &wl_seat::WlSeat,
         _: wl_seat::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
@@ -144,7 +144,7 @@ impl Dispatch<ext_data_control_manager_v1::ExtDataControlManagerV1, ()> for Stat
         _state: &mut Self,
         _: &ext_data_control_manager_v1::ExtDataControlManagerV1,
         _: ext_data_control_manager_v1::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
@@ -156,7 +156,7 @@ impl Dispatch<ext_data_control_device_v1::ExtDataControlDeviceV1, ()> for State 
         state: &mut Self,
         _: &ext_data_control_device_v1::ExtDataControlDeviceV1,
         event: ext_data_control_device_v1::Event,
-        _: &(),
+        (): &(),
         conn: &Connection,
         _: &QueueHandle<Self>,
     ) {
@@ -203,7 +203,7 @@ impl Dispatch<ext_data_control_offer_v1::ExtDataControlOfferV1, ()> for State {
         state: &mut Self,
         _: &ext_data_control_offer_v1::ExtDataControlOfferV1,
         event: ext_data_control_offer_v1::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
@@ -376,7 +376,7 @@ fn uri_list_filename(data: &[u8]) -> Result<String> {
     std::path::Path::new(&decoded)
         .file_name()
         .and_then(|name| name.to_str())
-        .map(|name| name.to_string())
+        .map(std::string::ToString::to_string)
         .context("file uri has no filename")
 }
 

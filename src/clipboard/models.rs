@@ -87,8 +87,8 @@ impl ClipboardEntry {
             return match self.kind {
                 EntryKind::Sensitive => "********".to_string(),
                 EntryKind::Image => format!("{} · {} KB", name, self.data.len() / 1024),
-                EntryKind::Text if self.mime_type == "text/uri-list" => format!("{} · path", name),
-                EntryKind::Text => format!("{} · text", name),
+                EntryKind::Text if self.mime_type == "text/uri-list" => format!("{name} · path"),
+                EntryKind::Text => format!("{name} · text"),
                 EntryKind::Binary => format!("{} · {}", name, self.mime_type),
             };
         }
@@ -105,7 +105,7 @@ impl ClipboardEntry {
                         if i == 0 {
                             collapsed
                         } else {
-                            format!("↪ {}", collapsed)
+                            format!("↪ {collapsed}")
                         }
                     })
                     .collect::<Vec<_>>()
@@ -130,8 +130,8 @@ impl ClipboardEntry {
             return match self.kind {
                 EntryKind::Sensitive => "********".to_string(),
                 EntryKind::Image => format!("{} · {} KB", name, self.data.len() / 1024),
-                EntryKind::Text if self.mime_type == "text/uri-list" => format!("{} · path", name),
-                EntryKind::Text => format!("{} · text", name),
+                EntryKind::Text if self.mime_type == "text/uri-list" => format!("{name} · path"),
+                EntryKind::Text => format!("{name} · text"),
                 EntryKind::Binary => format!("{} · {}", name, self.mime_type),
             };
         }
@@ -149,22 +149,21 @@ impl ClipboardEntry {
     }
 
     pub(crate) fn from_stored_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
-        match postcard::from_bytes(bytes) {
-            Ok(entry) => Ok(entry),
-            Err(_) => {
-                let legacy: LegacyClipboardEntryV1 = postcard::from_bytes(bytes)?;
-                Ok(Self {
-                    id: legacy.id,
-                    timestamp: legacy.timestamp,
-                    kind: EntryKind::from_mime(&legacy.mime_type, legacy.sensitive),
-                    mime_type: legacy.mime_type,
-                    data: legacy.data,
-                    thumb: Bytes::new(),
-                    hash: legacy.hash,
-                    sensitive: legacy.sensitive,
-                    filename: None,
-                })
-            }
+        if let Ok(entry) = postcard::from_bytes(bytes) {
+            Ok(entry)
+        } else {
+            let legacy: LegacyClipboardEntryV1 = postcard::from_bytes(bytes)?;
+            Ok(Self {
+                id: legacy.id,
+                timestamp: legacy.timestamp,
+                kind: EntryKind::from_mime(&legacy.mime_type, legacy.sensitive),
+                mime_type: legacy.mime_type,
+                data: legacy.data,
+                thumb: Bytes::new(),
+                hash: legacy.hash,
+                sensitive: legacy.sensitive,
+                filename: None,
+            })
         }
     }
 }

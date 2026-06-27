@@ -274,7 +274,9 @@ impl AppState {
                                 rt.block_on(async move {
                                     if let Ok(id) = id_str.parse::<u64>() {
                                         if should_bump {
-                                            let _ = crate::clipboard::client::bump_clipboard_entry(id).await;
+                                            let _ =
+                                                crate::clipboard::client::bump_clipboard_entry(id)
+                                                    .await;
                                         }
                                         let _ = crate::clipboard::client::paste_clipboard(id).await;
                                     }
@@ -373,7 +375,8 @@ impl AppState {
                             rt.block_on(async move {
                                 if let Ok(id) = id_str.parse::<u64>() {
                                     if should_bump {
-                                        let _ = crate::clipboard::client::bump_clipboard_entry(id).await;
+                                        let _ = crate::clipboard::client::bump_clipboard_entry(id)
+                                            .await;
                                     }
                                     let _ = crate::clipboard::client::paste_clipboard(id).await;
                                 }
@@ -792,7 +795,7 @@ impl Dispatch<WpViewport, ()> for AppState {
         _: &mut Self,
         _: &WpViewport,
         _: wayland_protocols::wp::viewporter::client::wp_viewport::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
@@ -804,7 +807,7 @@ impl Dispatch<WpViewporter, ()> for AppState {
         _: &mut Self,
         _: &WpViewporter,
         _: wayland_protocols::wp::viewporter::client::wp_viewporter::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {

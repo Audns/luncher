@@ -48,9 +48,9 @@ pub fn load_items() -> Vec<LauncherItem> {
                 .unwrap_or_default()
                 .iter()
                 .flat_map(|s| s.split(';'))
-                .map(|s| s.trim())
+                .map(str::trim)
                 .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
+                .map(std::string::ToString::to_string)
                 .collect();
 
             Some(LauncherItem {
@@ -86,7 +86,7 @@ fn format_command(cmd: &str, terminal: bool) -> String {
     if terminal {
         for term in &["foot", "kitty", "alacritty", "wezterm", "xterm"] {
             if which(term) {
-                return format!("{} -e {}", term, cmd);
+                return format!("{term} -e {cmd}");
             }
         }
     }
@@ -97,6 +97,5 @@ fn which(bin: &str) -> bool {
     std::process::Command::new("which")
         .arg(bin)
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|o| o.status.success())
 }

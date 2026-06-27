@@ -233,7 +233,7 @@ impl Renderer {
         let input_text_y = input_h.saturating_sub(font_size as u32) / 2;
 
         // ── Mode prefix ─────────────────────────────────────────────────────
-        let mode_prefix = format!("{}> ", mode);
+        let mode_prefix = format!("{mode}> ");
         let prefix_w = self.measure_text_width(&mode_prefix, hint_size);
         let prefix_x = pad_x;
         if !mode.is_empty() {
@@ -287,7 +287,7 @@ impl Renderer {
                 INPUT_LETTER_SPACING,
             );
             self.draw_rect(&mut buf, cx, input_text_y, cursor_w, cursor_h, FG);
-        };
+        }
         // ── Separator ─────────────────────────────────────────────────────
         self.draw_rect(&mut buf, 0, input_h, self.width, 1, LINE);
 
@@ -323,7 +323,7 @@ impl Renderer {
             };
 
             if let Some(meta) = inline_meta {
-                let meta = format!("  {}", meta);
+                let meta = format!("  {meta}");
                 self.draw_text(
                     &mut buf,
                     &meta,
@@ -338,7 +338,7 @@ impl Renderer {
             let mut mx = pad_x;
 
             for tag in &item.entry.tag {
-                let label = format!("#{} ", tag);
+                let label = format!("#{tag} ");
                 mx = self.draw_text(&mut buf, &label, mx, meta_y, FG_DIM, meta_size, 0.0);
                 mx += gap;
             }
@@ -388,14 +388,14 @@ impl Renderer {
                         if base + 3 >= glyph.data.len() {
                             continue;
                         }
-                        let r = glyph.data[base] as u32;
-                        let g = glyph.data[base + 1] as u32;
-                        let b = glyph.data[base + 2] as u32;
-                        let a = glyph.data[base + 3] as u32;
+                        let r = u32::from(glyph.data[base]);
+                        let g = u32::from(glyph.data[base + 1]);
+                        let b = u32::from(glyph.data[base + 2]);
+                        let a = u32::from(glyph.data[base + 3]);
                         (a, r, g, b)
                     } else {
-                        let a = glyph.data[idx] as u32;
-                        (a, fg_r as u32, fg_g as u32, fg_b as u32)
+                        let a = u32::from(glyph.data[idx]);
+                        (a, u32::from(fg_r), u32::from(fg_g), u32::from(fg_b))
                     };
                     if a == 0 {
                         continue;
@@ -416,9 +416,9 @@ impl Renderer {
                     let ia = 255 - a;
                     let bg = buf[bidx];
                     let [_, bg_r, bg_g, bg_b] = bg.to_be_bytes();
-                    let r = (fr * a + bg_r as u32 * ia) / 255;
-                    let g = (fg * a + bg_g as u32 * ia) / 255;
-                    let b = (fb * a + bg_b as u32 * ia) / 255;
+                    let r = (fr * a + u32::from(bg_r) * ia) / 255;
+                    let g = (fg * a + u32::from(bg_g) * ia) / 255;
+                    let b = (fb * a + u32::from(bg_b) * ia) / 255;
                     buf[bidx] = 0xFF000000 | (r << 16) | (g << 8) | b;
                 }
             }
@@ -467,10 +467,10 @@ impl Renderer {
             self.compute_wrapped_lines(&mut lines, &item.name, font_size, content_width, FG);
 
             let meta_text = if let Some(ref meta) = item.entry.inline_meta {
-                if !meta.is_empty() {
-                    Some(meta.as_str())
-                } else {
+                if meta.is_empty() {
                     None
+                } else {
+                    Some(meta.as_str())
                 }
             } else if !item.entry.name.is_empty() && item.entry.name != item.name {
                 Some(item.entry.name.as_str())
@@ -504,7 +504,7 @@ impl Renderer {
             let mut x = pad_x;
             let gap = (8.0 * self.scale).round() as u32;
             for tag in &item.entry.tag {
-                let label = format!("#{}  ", tag);
+                let label = format!("#{tag}  ");
                 x = self.draw_text(&mut buf, &label, x, tag_y, FG, meta_size, 0.0);
                 x += gap;
             }
@@ -585,9 +585,9 @@ impl Renderer {
                     let idx = (row * self.width + col) as usize;
                     let bg = buf[idx];
                     let [_, br, bg_g, bb] = bg.to_be_bytes();
-                    let r = (cr as u32 * a + br as u32 * ia) / 255;
-                    let g = (cg as u32 * a + bg_g as u32 * ia) / 255;
-                    let b = (cb as u32 * a + bb as u32 * ia) / 255;
+                    let r = (u32::from(cr) * a + u32::from(br) * ia) / 255;
+                    let g = (u32::from(cg) * a + u32::from(bg_g) * ia) / 255;
+                    let b = (u32::from(cb) * a + u32::from(bb) * ia) / 255;
                     buf[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
                 }
             }

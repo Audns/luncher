@@ -44,7 +44,7 @@ pub fn run(
     if let (Some(source), Some(handle)) = (remote_source, remote_handle) {
         let (tx, rx) = calloop::channel::channel();
         loop_handle
-            .insert_source(rx, |event, _, app| {
+            .insert_source(rx, |event, (), app| {
                 if let calloop::channel::Event::Msg(update) = event {
                     match update {
                         BackgroundUpdate::Items(items) => {
