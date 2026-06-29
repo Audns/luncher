@@ -5,7 +5,7 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Notify, RwLock};
 
 use crate::clipboard::backend;
-use crate::clipboard::models::EntryMeta;
+use crate::clipboard::models::{ClipboardEntry, EntryMeta};
 use crate::clipboard::store::SharedStore;
 use crate::config::Config;
 use crate::protocol::{DaemonRequest, DaemonResponse};
@@ -17,7 +17,7 @@ const LAUNCHER_REFRESH_INTERVAL_MS: u64 = 10_000;
 type SharedClipboardEntries = Arc<RwLock<Vec<EntryMeta>>>;
 type SharedLauncherEntries = Arc<RwLock<Vec<LauncherItem>>>;
 
-pub fn run(rt: tokio::runtime::Runtime) {
+pub fn run(rt: &tokio::runtime::Runtime) {
     let cfg = Config::load();
     if let Err(err) = rt.block_on(run_async(cfg.clipboard.history_limit)) {
         eprintln!("[daemon] {err}");
@@ -25,9 +25,13 @@ pub fn run(rt: tokio::runtime::Runtime) {
 }
 
 async fn run_async(history_limit: usize) -> anyhow::Result<()> {
-    let store = backend::open_store().map_err(anyhow::Error::msg)?;
+    let store = backend::open_store().await.map_err(anyhow::Error::msg)?;
     let clipboard_notify = Arc::new(Notify::new());
-    backend::spawn_watcher(Arc::clone(&store), Arc::clone(&clipboard_notify));
+    #[allow(clippy::let_underscore_future, clippy::let_underscore_must_use)]
+    let _ = tokio::spawn(crate::clipboard::watcher::run_watcher(
+        Arc::clone(&store),
+        Arc::clone(&clipboard_notify),
+    ));
 
     let clipboard_entries: SharedClipboardEntries = Arc::new(RwLock::new(Vec::new()));
     let bumped_entries: SharedClipboardEntries = Arc::new(RwLock::new(Vec::new()));
@@ -111,7 +115,7 @@ async fn refresh_clipboard_entries(
     entries: &SharedClipboardEntries,
     history_limit: usize,
 ) -> Result<(), String> {
-    let history = backend::load_clipboard_history(store, history_limit)?;
+    let history = backend::load_clipboard_history(store, history_limit).await?;
     *entries.write().await = history;
     Ok(())
 }
@@ -174,13 +178,16 @@ async fn dispatch(
                 by_id.insert(b.id, b.clone());
             }
             let mut merged: Vec<EntryMeta> = by_id.into_values().collect();
-            merged.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+            merged.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
             DaemonResponse::ClipboardHistory(merged.into_iter().take(limit).collect())
         }
-        DaemonRequest::GetClipboardContent { id } => match store.get_by_id(id) {
-            Ok(Some(entry)) => DaemonResponse::ClipboardContent(entry.full_content()),
+        DaemonRequest::GetClipboardContent { id } => match store.get_by_id(id).await {
+            Ok(Some(row)) => {
+                let entry = ClipboardEntry::from(&row);
+                DaemonResponse::ClipboardContent(entry.full_content())
+            }
             Ok(None) => DaemonResponse::Error(format!("entry {id} not found")),
-            Err(e) => DaemonResponse::Error(e.to_string()),
+            Err(e) => DaemonResponse::Error(e.clone()),
         },
         DaemonRequest::GetLauncherItems => {
             let entries = launcher_entries.read().await;

@@ -13,7 +13,6 @@ dirs = "6.0.0"
 memmap2 = "0.9"
 swash = "0.2"
 nucleo = "0.5.0"
-redb = "4.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1"
 smithay-client-toolkit = { version = "0.20.0", features = ["calloop"] }
@@ -32,6 +31,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync"
 postcard = { version = "1", features = ["use-std"] }
 anyhow = "1"
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+airnest = { path = "../airs/airnest" }
 
 [profile.release]
 opt-level = 3

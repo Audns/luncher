@@ -1,19 +1,16 @@
 use std::io::Read;
-use std::os::fd::{AsFd, FromRawFd, IntoRawFd, OwnedFd};
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use tracing::{info, warn};
-use wayland_client::{
-    Connection, Dispatch, EventQueue, QueueHandle,
-    protocol::{wl_registry, wl_seat},
-};
-use wayland_protocols::ext::data_control::v1::client::{
-    ext_data_control_device_v1, ext_data_control_manager_v1, ext_data_control_offer_v1,
-};
+use wl_clipboard_rs::paste::{ClipboardType, Error as PasteError, MimeType, Seat, get_contents};
 
 use crate::clipboard::models::ClipboardEntry;
-use crate::clipboard::store::SharedStore;
+use crate::clipboard::store::{ClipboardRow, SharedStore, hex_encode};
+
+const POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 const SENSITIVE_MIMES: &[&str] = &[
     "x-kde-passwordManagerHint",
@@ -21,240 +18,74 @@ const SENSITIVE_MIMES: &[&str] = &[
     "org.freedesktop.secret",
 ];
 
-pub fn spawn_watcher(store: SharedStore, notify: std::sync::Arc<tokio::sync::Notify>) {
-    std::thread::Builder::new()
-        .name("clipboard-watcher".into())
-        .spawn(move || {
-            if let Err(err) = run_watcher(store, notify) {
-                eprintln!("[daemon] clipboard watcher crashed: {err:#}");
-            }
-        })
-        .expect("failed to spawn watcher thread");
-}
+/// MIME types that carry a URI list (per the W3C URI list spec, or its KDE / GNOME analogues).
+/// `normalize_entry` recognizes any of these and rewrites the stored mime to `text/uri-list`.
+const URI_LIST_MIMES: &[&str] = &[
+    "text/uri-list",
+    "application/x-kde-uri-list",
+    "x-special/gnome-copied-files",
+];
 
-fn run_watcher(store: SharedStore, notify: std::sync::Arc<tokio::sync::Notify>) -> Result<()> {
-    let conn = Connection::connect_to_env()
-        .context("connecting to Wayland display — is WAYLAND_DISPLAY set?")?;
-    let display = conn.display();
-
-    let mut queue: EventQueue<State> = conn.new_event_queue();
-    let qh = queue.handle();
-
-    let mut state = State {
-        store,
-        seat: None,
-        manager: None,
-        device_created: false,
-        pending: None,
-        notify,
-    };
-
-    display.get_registry(&qh, ());
-    queue
-        .roundtrip(&mut state)
-        .context("initial Wayland roundtrip")?;
-
-    if state.manager.is_none() {
-        anyhow::bail!("compositor does not support ext_data_control_manager_v1");
-    }
-
-    info!("watching clipboard");
-
-    loop {
-        queue
-            .blocking_dispatch(&mut state)
-            .context("Wayland event dispatch")?;
-    }
-}
-
-struct State {
-    store: SharedStore,
-    seat: Option<wl_seat::WlSeat>,
-    manager: Option<ext_data_control_manager_v1::ExtDataControlManagerV1>,
-    device_created: bool,
-    pending: Option<PendingOffer>,
-    notify: std::sync::Arc<tokio::sync::Notify>,
-}
-
-struct PendingOffer {
-    proxy: ext_data_control_offer_v1::ExtDataControlOfferV1,
-    mimes: Vec<String>,
-    sensitive: bool,
-}
-
-impl Dispatch<wl_registry::WlRegistry, ()> for State {
-    fn event(
-        state: &mut Self,
-        registry: &wl_registry::WlRegistry,
-        event: wl_registry::Event,
-        (): &(),
-        _: &Connection,
-        qh: &QueueHandle<Self>,
-    ) {
-        let wl_registry::Event::Global {
-            name,
-            interface,
-            version,
-        } = event
-        else {
-            return;
-        };
-
-        match interface.as_str() {
-            "wl_seat" => {
-                let seat = registry.bind::<wl_seat::WlSeat, _, _>(name, version.min(7), qh, ());
-                state.seat = Some(seat);
-            }
-            "ext_data_control_manager_v1" => {
-                let manager = registry
-                    .bind::<ext_data_control_manager_v1::ExtDataControlManagerV1, _, _>(
-                        name,
-                        version.min(1),
-                        qh,
-                        (),
-                    );
-                state.manager = Some(manager);
-            }
-            _ => return,
-        }
-
-        if !state.device_created
-            && let (Some(seat), Some(manager)) = (&state.seat, &state.manager)
-        {
-            manager.get_data_device(seat, qh, ());
-            state.device_created = true;
-        }
-    }
-}
-
-impl Dispatch<wl_seat::WlSeat, ()> for State {
-    fn event(
-        _state: &mut Self,
-        _: &wl_seat::WlSeat,
-        _: wl_seat::Event,
-        (): &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-    }
-}
-
-impl Dispatch<ext_data_control_manager_v1::ExtDataControlManagerV1, ()> for State {
-    fn event(
-        _state: &mut Self,
-        _: &ext_data_control_manager_v1::ExtDataControlManagerV1,
-        _: ext_data_control_manager_v1::Event,
-        (): &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-    }
-}
-
-impl Dispatch<ext_data_control_device_v1::ExtDataControlDeviceV1, ()> for State {
-    fn event(
-        state: &mut Self,
-        _: &ext_data_control_device_v1::ExtDataControlDeviceV1,
-        event: ext_data_control_device_v1::Event,
-        (): &(),
-        conn: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        use ext_data_control_device_v1::Event;
-
-        match event {
-            Event::DataOffer { id } => {
-                state.pending = Some(PendingOffer {
-                    proxy: id,
-                    mimes: Vec::new(),
-                    sensitive: false,
-                });
-            }
-            Event::Selection { id } => {
-                let Some(offer_proxy) = id else { return };
-                let Some(offer) = state.pending.take() else {
-                    return;
-                };
-                if offer.proxy != offer_proxy {
-                    return;
-                }
-                if process_offer(offer, &state.store, conn) {
-                    state.notify.notify_one();
-                }
-            }
-            Event::Finished => warn!("data control device finished"),
-            _ => {}
-        }
-    }
-
-    fn event_created_child(
-        opcode: u16,
-        qh: &QueueHandle<Self>,
-    ) -> std::sync::Arc<dyn wayland_client::backend::ObjectData> {
-        match opcode {
-            0 => qh.make_data::<ext_data_control_offer_v1::ExtDataControlOfferV1, ()>(()),
-            _ => panic!("unexpected child-creating opcode {opcode} on ext_data_control_device_v1"),
-        }
-    }
-}
-
-impl Dispatch<ext_data_control_offer_v1::ExtDataControlOfferV1, ()> for State {
-    fn event(
-        state: &mut Self,
-        _: &ext_data_control_offer_v1::ExtDataControlOfferV1,
-        event: ext_data_control_offer_v1::Event,
-        (): &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        let ext_data_control_offer_v1::Event::Offer { mime_type } = event else {
-            return;
-        };
-
-        let Some(offer) = &mut state.pending else {
-            return;
-        };
-
-        if SENSITIVE_MIMES.contains(&mime_type.as_str()) {
-            offer.sensitive = true;
-            return;
-        }
-
-        offer.mimes.push(mime_type);
-    }
-}
-
-fn process_offer(offer: PendingOffer, store: &SharedStore, conn: &Connection) -> bool {
-    let Some(mime) = choose_mime(&offer.mimes) else {
-        return false;
-    };
-
-    let data = match read_pipe(&offer.proxy, &mime, conn) {
-        Ok(data) if data.is_empty() => return false,
-        Ok(data) => data,
-        Err(err) => {
-            warn!("pipe read failed for MIME {mime}: {err}");
-            return false;
-        }
-    };
-
-    let (mime, data, filename) = normalize_entry(mime, data);
-    let entry = ClipboardEntry::with_filename(
-        mime,
-        Bytes::from(data),
-        offer.sensitive,
-        Bytes::new(),
-        filename,
+/// Async watcher loop. Spawn with `tokio::spawn` from the daemon.
+pub async fn run_watcher(store: SharedStore, notify: Arc<tokio::sync::Notify>) -> Result<()> {
+    info!(
+        "watching clipboard (polling wl-clipboard-rs every {}ms)",
+        POLL_INTERVAL.as_millis()
     );
 
-    match store.insert(&entry) {
-        Ok(Some(_)) => true,
-        Ok(None) => false,
-        Err(err) => {
-            warn!("store insert error: {err}");
-            false
+    loop {
+        match poll_once() {
+            Ok(Some(entry)) => {
+                let row: ClipboardRow = (&entry).into();
+                match store.insert(&row).await {
+                    Ok(true) => {
+                        info!(
+                            "clipboard: stored {} bytes of {}",
+                            row.data.len(),
+                            row.mime_type
+                        );
+                        notify.notify_one();
+                    }
+                    Ok(false) => {}
+                    Err(err) => warn!("store insert error: {err}"),
+                }
+            }
+            Ok(None) => {}
+            Err(err) => warn!("clipboard poll failed: {err:#}"),
         }
+
+        tokio::time::sleep(POLL_INTERVAL).await;
     }
+}
+fn poll_once() -> Result<Option<ClipboardEntry>> {
+    let (mut pipe, mime) =
+        match get_contents(ClipboardType::Regular, Seat::Unspecified, MimeType::Any) {
+            Ok(pair) => pair,
+            Err(PasteError::ClipboardEmpty | PasteError::NoMimeType | PasteError::NoSeats) => {
+                return Ok(None);
+            }
+            Err(e) => return Err(anyhow::anyhow!("wl-clipboard-rs get_contents: {e}")),
+        };
+
+    let mut data = Vec::with_capacity(4096);
+    pipe.read_to_end(&mut data)
+        .context("reading clipboard pipe")?;
+    while data.last() == Some(&0) {
+        data.pop();
+    }
+    if data.is_empty() {
+        return Ok(None);
+    }
+
+    let sensitive = SENSITIVE_MIMES.iter().any(|s| mime == *s);
+    let (mime, data, filename) = normalize_entry(mime, data);
+    Ok(Some(ClipboardEntry::with_filename(
+        mime,
+        Bytes::from(data),
+        sensitive,
+        Bytes::new(),
+        filename,
+    )))
 }
 
 fn normalize_entry(mime: String, data: Vec<u8>) -> (String, Vec<u8>, Option<String>) {
@@ -263,7 +94,10 @@ fn normalize_entry(mime: String, data: Vec<u8>) -> (String, Vec<u8>, Option<Stri
     let is_absolute_path =
         text_content.starts_with('/') && !text_content.contains('\n') && text_content.len() < 4096;
 
-    if mime == "text/uri-list" || is_file_uri || is_absolute_path {
+    let looks_like_uri_list =
+        URI_LIST_MIMES.iter().any(|m| mime == *m) || is_file_uri || is_absolute_path;
+
+    if looks_like_uri_list {
         let uri_data = if is_absolute_path {
             format!("file://{}", text_content.trim()).into_bytes()
         } else {
@@ -277,83 +111,6 @@ fn normalize_entry(mime: String, data: Vec<u8>) -> (String, Vec<u8>, Option<Stri
     }
 
     (mime, data, None)
-}
-
-fn choose_mime(mimes: &[String]) -> Option<String> {
-    if mimes.iter().any(|mime| mime.as_str() == "text/uri-list") {
-        return Some("text/uri-list".to_string());
-    }
-
-    const TEXT_PREF: &[&str] = &[
-        "text/plain;charset=utf-8",
-        "text/plain",
-        "text/html",
-        "UTF8_STRING",
-        "STRING",
-        "TEXT",
-    ];
-    for pref in TEXT_PREF {
-        if let Some(mime) = mimes.iter().find(|mime| mime.as_str() == *pref) {
-            return Some(mime.clone());
-        }
-    }
-
-    const IMAGE_PREF: &[&str] = &["image/png", "image/jpeg", "image/webp", "image/gif"];
-    for pref in IMAGE_PREF {
-        if let Some(mime) = mimes.iter().find(|mime| mime.as_str() == *pref) {
-            return Some(mime.clone());
-        }
-    }
-    if let Some(mime) = mimes.iter().find(|mime| mime.starts_with("image/")) {
-        return Some(mime.clone());
-    }
-
-    let skip_prefixes = [
-        "x-special/",
-        "application/x-kde-",
-        "chromium/",
-        "x-moz-",
-        "TARGETS",
-        "MULTIPLE",
-        "SAVE_TARGETS",
-        "TIMESTAMP",
-        "ATOM",
-        "INTEGER",
-    ];
-    mimes
-        .iter()
-        .find(|mime| !skip_prefixes.iter().any(|prefix| mime.starts_with(prefix)))
-        .cloned()
-}
-
-fn read_pipe(
-    offer: &ext_data_control_offer_v1::ExtDataControlOfferV1,
-    mime: &str,
-    conn: &Connection,
-) -> Result<Vec<u8>> {
-    let (read_sock, write_sock) = std::os::unix::net::UnixStream::pair()
-        .context("creating socket pair for clipboard pipe")?;
-
-    let (read_fd, write_fd) = unsafe {
-        (
-            OwnedFd::from_raw_fd(read_sock.into_raw_fd()),
-            OwnedFd::from_raw_fd(write_sock.into_raw_fd()),
-        )
-    };
-
-    offer.receive(mime.to_string(), write_fd.as_fd());
-    conn.flush()
-        .context("flushing Wayland connection after receive()")?;
-    drop(write_fd);
-
-    let mut file = std::fs::File::from(read_fd);
-    let mut buf = Vec::with_capacity(4096);
-    file.read_to_end(&mut buf)
-        .context("reading clipboard pipe")?;
-    while buf.last() == Some(&0) {
-        buf.pop();
-    }
-    Ok(buf)
 }
 
 fn uri_list_filename(data: &[u8]) -> Result<String> {
@@ -400,4 +157,20 @@ fn percent_decode(input: &str) -> String {
         }
     }
     String::from_utf8_lossy(&bytes).into_owned()
+}
+
+impl From<&ClipboardEntry> for ClipboardRow {
+    fn from(entry: &ClipboardEntry) -> Self {
+        ClipboardRow::new(
+            entry.timestamp,
+            entry.mime_type.clone(),
+            entry.kind,
+            entry.data.clone(),
+            entry.thumb.clone(),
+            entry.hash,
+            hex_encode(&entry.hash),
+            entry.sensitive,
+            entry.filename.clone(),
+        )
+    }
 }

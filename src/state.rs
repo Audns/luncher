@@ -105,7 +105,7 @@ impl AppState {
 
         let viewport: Option<WpViewport> = viewporter.as_ref().map(|vp| {
             let v = vp.get_viewport(layer_surface.wl_surface(), qh, ());
-            v.set_destination(logical_width as i32, logical_height as i32);
+            v.set_destination(logical_width.cast_signed(), logical_height.cast_signed());
             v
         });
 
@@ -194,9 +194,9 @@ impl AppState {
         let (buffer, canvas) = self
             .pool
             .create_buffer(
-                self.width as i32,
-                self.height as i32,
-                (self.width * 4) as i32,
+                self.width.cast_signed(),
+                self.height.cast_signed(),
+                (self.width * 4).cast_signed(),
                 wl_shm::Format::Argb8888,
             )
             .unwrap();
@@ -213,9 +213,12 @@ impl AppState {
         self.layer_surface
             .wl_surface()
             .attach(Some(buffer.wl_buffer()), 0, 0);
-        self.layer_surface
-            .wl_surface()
-            .damage_buffer(0, 0, self.width as i32, self.height as i32);
+        self.layer_surface.wl_surface().damage_buffer(
+            0,
+            0,
+            self.width.cast_signed(),
+            self.height.cast_signed(),
+        );
         self.layer_surface.wl_surface().commit();
         self.needs_redraw = false;
     }

@@ -21,7 +21,7 @@ const CJK_FONT_PATHS: &[&str] = &[
 ];
 
 struct MappedFont {
-    _mmap: Mmap,
+    mmap: Mmap,
     offset: u32,
     key: CacheKey,
 }
@@ -32,7 +32,7 @@ impl MappedFont {
         let mmap = unsafe { Mmap::map(&file).ok()? };
         let font_ref = FontRef::from_index(unsafe { Self::mmap_as_static(&mmap) }, 0)?;
         Some(Self {
-            _mmap: mmap,
+            mmap,
             offset: font_ref.offset,
             key: font_ref.key,
         })
@@ -47,7 +47,7 @@ impl MappedFont {
     }
 
     fn data(&self) -> &[u8] {
-        &self._mmap
+        &self.mmap
     }
 
     unsafe fn mmap_as_static(mmap: &Mmap) -> &'static [u8] {
@@ -345,7 +345,7 @@ impl Renderer {
 
             let _ = mx;
             if i + 1 < max_visible {
-                self.draw_rect(&mut buf, 0, row_y + row_h - 1, self.width, 1, 0x10C0CAF5);
+                self.draw_rect(&mut buf, 0, row_y + row_h - 1, self.width, 1, 0x10C0_CAF5);
             }
         }
 
@@ -365,7 +365,7 @@ impl Renderer {
     ) -> u32 {
         let size = size.round();
         let ascent = self.primary.as_ref().metrics(&[]).scale(size).ascent;
-        let mut cx = x as i32;
+        let mut cx = x.cast_signed();
         let [_, fg_r, fg_g, fg_b] = color.to_be_bytes();
 
         for ch in text.chars() {
@@ -378,7 +378,7 @@ impl Renderer {
             }
             let glyph = self.rasterize_glyph(ch, size);
             let glyph_x = cx + glyph.placement_left;
-            let glyph_y = y as i32 + ascent as i32 - glyph.placement_top;
+            let glyph_y = y.cast_signed() + ascent as i32 - glyph.placement_top;
 
             for gy in 0..glyph.height {
                 for gx in 0..glyph.width {
@@ -401,8 +401,8 @@ impl Renderer {
                         continue;
                     }
 
-                    let px = glyph_x + gx as i32;
-                    let py = glyph_y + gy as i32;
+                    let px = glyph_x + gx.cast_signed();
+                    let py = glyph_y + gy.cast_signed();
                     if px < 0 || py < 0 {
                         continue;
                     }
@@ -419,12 +419,12 @@ impl Renderer {
                     let r = (fr * a + u32::from(bg_r) * ia) / 255;
                     let g = (fg * a + u32::from(bg_g) * ia) / 255;
                     let b = (fb * a + u32::from(bg_b) * ia) / 255;
-                    buf[bidx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    buf[bidx] = 0xFF00_0000 | (r << 16) | (g << 8) | b;
                 }
             }
             cx += glyph.advance as i32 + (letter_spacing * self.scale).round() as i32;
         }
-        cx.max(x as i32) as u32
+        cx.max(x.cast_signed()) as u32
     }
 
     #[allow(non_snake_case)]
@@ -588,7 +588,7 @@ impl Renderer {
                     let r = (u32::from(cr) * a + u32::from(br) * ia) / 255;
                     let g = (u32::from(cg) * a + u32::from(bg_g) * ia) / 255;
                     let b = (u32::from(cb) * a + u32::from(bb) * ia) / 255;
-                    buf[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    buf[idx] = 0xFF00_0000 | (r << 16) | (g << 8) | b;
                 }
             }
         }

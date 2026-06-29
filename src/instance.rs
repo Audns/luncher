@@ -20,7 +20,7 @@ impl SingleInstance {
                 socket_path,
             })),
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-                if let Ok(_) = std::os::unix::net::UnixStream::connect(&socket_path) {
+                if std::os::unix::net::UnixStream::connect(&socket_path).is_ok() {
                     Ok(None)
                 } else {
                     std::fs::remove_file(&socket_path)?;

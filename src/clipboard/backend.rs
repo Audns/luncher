@@ -1,33 +1,29 @@
-use std::path::PathBuf;
-
-use anyhow::Context;
 use wl_clipboard_rs::copy::{MimeType, Options, Source};
 
 use crate::clipboard::models::EntryMeta;
-use crate::clipboard::store::{SharedStore, Store};
+use crate::clipboard::store::{AirStore, SharedStore, db_path};
 
-pub fn open_store() -> Result<SharedStore, String> {
-    let path = db_path().map_err(|err| err.to_string())?;
-    Store::open(&path)
-        .map(std::sync::Arc::new)
-        .map_err(|err| err.to_string())
+pub async fn open_store() -> Result<SharedStore, String> {
+    let path = db_path()?;
+    AirStore::open(&path).await
 }
 
-pub fn spawn_watcher(store: SharedStore, notify: std::sync::Arc<tokio::sync::Notify>) {
-    crate::clipboard::watcher::spawn_watcher(store, notify);
-}
-
-pub fn load_clipboard_history(store: &SharedStore, limit: usize) -> Result<Vec<EntryMeta>, String> {
+pub async fn load_clipboard_history(
+    store: &SharedStore,
+    limit: usize,
+) -> Result<Vec<EntryMeta>, String> {
     store
         .get_recent(limit)
+        .await
         .map(|entries| entries.iter().map(EntryMeta::from).collect())
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.clone())
 }
 
 pub async fn paste_clipboard(store: SharedStore, id: u64) -> Result<(), String> {
     let entry = store
         .get_by_id(id)
-        .map_err(|err| err.to_string())?
+        .await
+        .map_err(|err| err.clone())?
         .ok_or_else(|| format!("entry {id} not found"))?;
 
     let data = entry.data.clone();
@@ -42,19 +38,4 @@ pub async fn paste_clipboard(store: SharedStore, id: u64) -> Result<(), String> 
     .await
     .map_err(|err| err.to_string())?
     .map_err(|err| err.to_string())
-}
-
-fn db_path() -> anyhow::Result<PathBuf> {
-    let base = dirs::data_dir().ok_or_else(|| anyhow::anyhow!("XDG_DATA_HOME not set"))?;
-    let legacy = base.join("clipbowl").join("history.redb");
-    if legacy.exists() {
-        return Ok(legacy);
-    }
-
-    let path = base.join("luncher").join("history.redb");
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("creating {}", parent.display()))?;
-    }
-    Ok(path)
 }

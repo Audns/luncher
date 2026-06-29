@@ -91,7 +91,7 @@ fn display_kind(entry: &EntryMeta) -> EntryKind {
 }
 
 fn format_timestamp(timestamp_micros: u64) -> String {
-    let secs = (timestamp_micros / 1_000_000) as i64;
+    let secs = (timestamp_micros / 1_000_000).cast_signed();
     let nanos = ((timestamp_micros % 1_000_000) * 1_000) as u32;
 
     Local.timestamp_opt(secs, nanos).single().map_or_else(

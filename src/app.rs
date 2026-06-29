@@ -1,5 +1,6 @@
 use calloop::EventLoop;
 use calloop_wayland_source::WaylandSource;
+use std::io::Write;
 use std::time::Duration;
 use wayland_client::{Connection, globals::registry_queue_init};
 
@@ -65,7 +66,7 @@ pub fn run(
                 }
             })
             .unwrap();
-        spawn_remote_refresh_worker(source, handle, tx);
+        spawn_remote_refresh_worker(source, &handle, tx);
     }
 
     let mut app = AppState::new(
@@ -98,27 +99,24 @@ pub fn run(
         }
     }
 
-    use std::io::Write;
     std::io::stdout().flush().ok();
     drop(app);
 }
 
 fn spawn_remote_refresh_worker(
     source: RemoteSource,
-    handle: tokio::runtime::Handle,
+    handle: &tokio::runtime::Handle,
     tx: calloop::channel::Sender<BackgroundUpdate>,
 ) {
     handle.spawn(async move {
         if crate::clipboard::client::ensure_daemon().await.is_err() {
             return;
         }
-        let socket = match crate::clipboard::client::socket_path() {
-            Ok(p) => p,
-            Err(_) => return,
+        let Ok(socket) = crate::clipboard::client::socket_path() else {
+            return;
         };
-        let mut stream = match tokio::net::UnixStream::connect(&socket).await {
-            Ok(s) => s,
-            Err(_) => return,
+        let Ok(mut stream) = tokio::net::UnixStream::connect(&socket).await else {
+            return;
         };
 
         let history_limit = crate::config::Config::load().clipboard.history_limit;

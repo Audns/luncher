@@ -39,17 +39,6 @@ pub struct ClipboardEntry {
     pub filename: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct LegacyClipboardEntryV1 {
-    pub id: u64,
-    pub timestamp: u64,
-    pub mime_type: String,
-    #[serde(with = "bytes_serde")]
-    pub data: Bytes,
-    pub hash: [u8; 32],
-    pub sensitive: bool,
-}
-
 impl ClipboardEntry {
     pub fn with_filename(
         mime_type: impl Into<String>,
@@ -147,25 +136,6 @@ impl ClipboardEntry {
             EntryKind::Binary => format!("{} · {} B", self.mime_type, self.data.len()),
         }
     }
-
-    pub(crate) fn from_stored_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
-        if let Ok(entry) = postcard::from_bytes(bytes) {
-            Ok(entry)
-        } else {
-            let legacy: LegacyClipboardEntryV1 = postcard::from_bytes(bytes)?;
-            Ok(Self {
-                id: legacy.id,
-                timestamp: legacy.timestamp,
-                kind: EntryKind::from_mime(&legacy.mime_type, legacy.sensitive),
-                mime_type: legacy.mime_type,
-                data: legacy.data,
-                thumb: Bytes::new(),
-                hash: legacy.hash,
-                sensitive: legacy.sensitive,
-                filename: None,
-            })
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,6 +163,49 @@ impl From<&ClipboardEntry> for EntryMeta {
             preview: entry.preview(120),
             thumb: entry.thumb.to_vec(),
             filename: entry.filename.clone(),
+        }
+    }
+}
+
+impl From<&crate::clipboard::store::ClipboardRow> for ClipboardEntry {
+    fn from(row: &crate::clipboard::store::ClipboardRow) -> Self {
+        Self {
+            id: row.timestamp,
+            timestamp: row.timestamp,
+            mime_type: row.mime_type.clone(),
+            kind: row.kind,
+            data: row.data.clone(),
+            thumb: row.thumb.clone(),
+            hash: row.hash,
+            sensitive: row.sensitive,
+            filename: row.filename.clone(),
+        }
+    }
+}
+
+impl From<&crate::clipboard::store::ClipboardRow> for EntryMeta {
+    fn from(row: &crate::clipboard::store::ClipboardRow) -> Self {
+        let entry = ClipboardEntry {
+            id: row.timestamp,
+            timestamp: row.timestamp,
+            mime_type: row.mime_type.clone(),
+            kind: row.kind,
+            data: row.data.clone(),
+            thumb: row.thumb.clone(),
+            hash: row.hash,
+            sensitive: row.sensitive,
+            filename: row.filename.clone(),
+        };
+        Self {
+            id: row.timestamp,
+            timestamp: row.timestamp,
+            mime_type: row.mime_type.clone(),
+            kind: row.kind,
+            data_len: row.data.len(),
+            sensitive: row.sensitive,
+            preview: entry.preview(120),
+            thumb: row.thumb.to_vec(),
+            filename: row.filename.clone(),
         }
     }
 }

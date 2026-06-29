@@ -209,22 +209,22 @@ fn default_input_letter_spacing() -> f32 {
 }
 
 fn default_bg() -> u32 {
-    0xFF1E1E2E
+    0xFF1E_1E2E
 }
 fn default_fg() -> u32 {
-    0xE6E6E6FF
+    0xE6E6_E6FF
 }
 fn default_fg_dim() -> u32 {
-    0x73C0CAF5
+    0x73C0_CAF5
 }
 fn default_fg_hint() -> u32 {
-    0x4DC0CAF5
+    0x4DC0_CAF5
 }
 fn default_sel_bg() -> u32 {
-    0x15C0CAF5
+    0x15C0_CAF5
 }
 fn default_line() -> u32 {
-    0xFF2A2A3E
+    0xFF2A_2A3E
 }
 
 pub fn config_dir() -> PathBuf {

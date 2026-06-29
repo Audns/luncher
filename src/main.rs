@@ -27,17 +27,25 @@ delegate_registry!(AppState);
 delegate_keyboard!(AppState);
 
 fn main() {
+    init_tracing();
+
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _ = rt.enter();
 
     run_with_runtime(rt);
 }
 
+fn init_tracing() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
+}
+
 fn run_with_runtime(rt: tokio::runtime::Runtime) {
     let cli = cli::parse();
 
     if cli.daemon {
-        clipboard::daemon::run(rt);
+        clipboard::daemon::run(&rt);
         return;
     }
 
@@ -50,7 +58,7 @@ fn run_with_runtime(rt: tokio::runtime::Runtime) {
                 std::process::exit(0);
             }
             Err(e) => {
-                eprintln!("[single_instance] lock error: {e}");
+                tracing::warn!("[single_instance] lock error: {e}");
                 None
             }
         }
@@ -75,7 +83,7 @@ fn run_with_runtime(rt: tokio::runtime::Runtime) {
             if let Some(name) = cli.fix.as_deref() {
                 modes::exec::run(name);
             } else {
-                eprintln!("exec mode requires -f/--fix argument");
+                tracing::error!("exec mode requires -f/--fix argument");
                 std::process::exit(1);
             }
         }
@@ -91,12 +99,12 @@ fn run_with_runtime(rt: tokio::runtime::Runtime) {
                     )
                 );
             } else {
-                eprintln!("fetch mode requires -f/--fix argument");
+                tracing::error!("fetch mode requires -f/--fix argument");
                 std::process::exit(1);
             }
         }
         other => {
-            eprintln!(
+            tracing::error!(
                 "Unknown mode: '{other}'. Valid modes: script, launcher, clipboard, switcher, tool, exec, fetch"
             );
             std::process::exit(1);
