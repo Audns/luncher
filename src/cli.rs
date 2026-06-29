@@ -1,5 +1,7 @@
 use clap::Parser;
 
+use crate::modes::switcher::HyprAction;
+
 #[derive(Parser)]
 #[command(
     name = "luncher",
@@ -36,10 +38,13 @@ pub struct Cli {
     pub only_launcher: bool,
 
     #[arg(
-        long = "pull",
-        help = "For switcher mode: move window to current workspace instead of switching to window's workspace"
+        long = "action",
+        value_name = "ACTION",
+        default_value_t = HyprAction::Switch,
+        help = "For switcher mode: action to take on the selected window",
+        long_help = "For switcher mode: 'pull' moves the window to the current workspace, 'switch' focuses the window's workspace, 'flip' swaps the current workspace's windows with the target workspace's windows"
     )]
-    pub pull: bool,
+    pub action: HyprAction,
 
     #[arg(
         long = "daemon",

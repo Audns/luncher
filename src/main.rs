@@ -75,7 +75,7 @@ fn run_with_runtime(rt: tokio::runtime::Runtime) {
         "script" => modes::script::run(),
         "launcher" => modes::launcher::run(rt),
         "clipboard" => modes::clipboard::run(rt),
-        "switcher" => modes::switcher::run(cli.pull),
+        "switcher" => modes::switcher::run(cli.action),
         "tool" => {
             println!("{}", modes::tool::run_json());
         }

@@ -32,7 +32,7 @@ postcard = { version = "1", features = ["use-std"] }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-airnest = { path = "../airs/airnest" }
+airnest = {version = "0.1.4"}
 
 [profile.release]
 opt-level = 3

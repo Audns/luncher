@@ -1,6 +1,7 @@
 use std::process::Command;
 
-use serde::Deserialize;
+use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
 
 use crate::app;
 use crate::config::Entry;
@@ -21,22 +22,40 @@ struct HyprClient {
     address: String,
 }
 
-pub fn run(pull_to_current: bool) {
-    let items = load_items(pull_to_current);
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ValueEnum)]
+pub enum HyprAction {
+    Pull,
+    Switch,
+    Flip,
+}
+
+impl std::fmt::Display for HyprAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HyprAction::Pull => f.write_str("pull"),
+            HyprAction::Switch => f.write_str("switch"),
+            HyprAction::Flip => f.write_str("flip"),
+        }
+    }
+}
+
+pub fn run(action: HyprAction) {
+    let items = load_items(action);
     if items.is_empty() {
         eprintln!("[switcher] no Hyprland windows found");
         return;
     }
 
-    let mode = if pull_to_current {
-        "Pull".to_string()
-    } else {
-        "Switcher".to_string()
-    };
+    let mode = match action {
+        HyprAction::Pull => "Pull",
+        HyprAction::Switch => "Switcher",
+        HyprAction::Flip => "Flip",
+    }
+    .to_string();
     app::run(items, false, false, None, None, None, mode);
 }
 
-fn load_items(pull_to_current: bool) -> Vec<LauncherItem> {
+fn load_items(action: HyprAction) -> Vec<LauncherItem> {
     let output = match Command::new("hyprctl").args(["clients", "-j"]).output() {
         Ok(output) => output,
         Err(err) => {
@@ -71,14 +90,28 @@ fn load_items(pull_to_current: bool) -> Vec<LauncherItem> {
         .into_iter()
         .map(|client| {
             let label = format_label(&client.class, &client.title, client.workspace.id);
-            let command = if pull_to_current {
-                format!(
+            let command = match action {
+                HyprAction::Pull => {
+                           format!(
          "hyprctl dispatch 'hl.dsp.window.move({{workspace = '$(hyprctl activeworkspace -j | jq -r '.id')', window = \"address:{}\", silent = true}})' && hyprctl dispatch 'hl.dsp.window.focus({{window = \"address:{}\"}})'",
         client.address, client.address
-    )
-            } else {
-                format!("hyprctl dispatch 'hl.dsp.focus({{workspace = {}}})'", client.workspace.id)
-            };
+    )}
+            HyprAction::Switch => {
+        format!("hyprctl dispatch 'hl.dsp.focus({{workspace = {}}})'", client.workspace.id)    }
+    HyprAction::Flip => {
+        format!(
+            "hyprctl eval '\
+                local cur = hl.get_active_workspace().id\n\
+                local tgt = {}\n\
+                for _, w in pairs(hl.get_windows()) do\n\
+                    if w.workspace.id == cur then\n\
+                        hl.dispatch(hl.dsp.window.move({{workspace = tgt, window = \"address:\" .. w.address, silent = true}}))\n                    elseif w.workspace.id == tgt then\n\
+                        hl.dispatch(hl.dsp.window.move({{workspace = cur, window = \"address:\" .. w.address, silent = true}}))\n                    end\n                end\n\
+                hl.dispatch(hl.dsp.focus({{workspace = tgt}}))\n            '",
+            client.workspace.id
+        )
+    }
+            } ;
             LauncherItem::new(
                 label,
                 Entry {
