@@ -8,14 +8,14 @@ use swash::scale::{Render, ScaleContext, Source, StrikeWith};
 use swash::zeno::Format;
 use swash::{CacheKey, FontRef, GlyphId};
 
-const PRIMARY_FONT_PATHS: &[&str] = &[
+const DEFAULT_PRIMARY_FONT_PATHS: &[&str] = &[
     "/usr/share/fonts/noto/NotoSans-Regular.ttf",
     "/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.ttf",
 ];
 
-const EMOJI_FONT_PATHS: &[&str] = &["/usr/share/fonts/noto/NotoColorEmoji.ttf"];
+const DEFAULT_EMOJI_FONT_PATHS: &[&str] = &["/usr/share/fonts/noto/NotoColorEmoji.ttf"];
 
-const CJK_FONT_PATHS: &[&str] = &[
+const DEFAULT_CJK_FONT_PATHS: &[&str] = &[
     "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Regular.otf",
     "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
 ];
@@ -55,6 +55,40 @@ impl MappedFont {
     }
 }
 
+/// Try each configured path in order, then each built-in default path.
+/// Returns the first font that opens successfully.
+fn open_first_available(configured: &[String], defaults: &[&str]) -> Option<MappedFont> {
+    for path in configured {
+        if let Some(font) = MappedFont::open(path) {
+            return Some(font);
+        }
+    }
+    for path in defaults {
+        if let Some(font) = MappedFont::open(path) {
+            return Some(font);
+        }
+    }
+    None
+}
+
+/// Like [`open_first_available`] but returns the first font that opens
+/// successfully, or `None` if every candidate failed.
+fn open_optional(configured: &[String], defaults: &[&str]) -> Option<MappedFont> {
+    open_first_available(configured, defaults)
+}
+
+/// Like [`open_first_available`] but panics with a helpful message when no
+/// candidate can be opened. Used for the primary font, since the renderer
+/// has no way to lay out text without one.
+fn open_required(configured: &[String], defaults: &[&str], role: &str) -> MappedFont {
+    if let Some(font) = open_first_available(configured, defaults) {
+        return font;
+    }
+    let mut tried: Vec<&str> = configured.iter().map(std::string::String::as_str).collect();
+    tried.extend(defaults.iter().copied());
+    panic!("no {role} font found; tried: {}", tried.join(", "));
+}
+
 struct CachedGlyph {
     placement_left: i32,
     placement_top: i32,
@@ -87,18 +121,14 @@ impl Renderer {
         scale: f32,
         theme: crate::config::ThemeConfig,
         layout: crate::config::LayoutConfig,
+        font: &crate::config::FontConfig,
     ) -> Self {
-        let primary = MappedFont::open(PRIMARY_FONT_PATHS[0])
-            .unwrap_or_else(|| panic!("No primary font found at {}", PRIMARY_FONT_PATHS[0]));
+        let primary = open_required(&font.primary, DEFAULT_PRIMARY_FONT_PATHS, "primary");
 
-        let fallback = if PRIMARY_FONT_PATHS.len() > 1 {
-            MappedFont::open(PRIMARY_FONT_PATHS[1])
-        } else {
-            None
-        };
+        let fallback = open_optional(&font.fallback, DEFAULT_PRIMARY_FONT_PATHS);
 
-        let emoji = EMOJI_FONT_PATHS.iter().find_map(|p| MappedFont::open(p));
-        let cjk = CJK_FONT_PATHS.iter().find_map(|p| MappedFont::open(p));
+        let emoji = open_optional(&font.emoji, DEFAULT_EMOJI_FONT_PATHS);
+        let cjk = open_optional(&font.cjk, DEFAULT_CJK_FONT_PATHS);
 
         let max_visible_rows = {
             let row_h = (layout.row_h as f32 * scale).round() as u32;

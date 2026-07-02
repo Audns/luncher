@@ -28,6 +28,18 @@ row_h = 58
 input_h = 45
 pad_x = 16
 input_letter_spacing = 0.5
+
+[clipboard]
+history_limit = 50
+
+[font]
+primary = ["/usr/share/fonts/noto/NotoSans-Regular.ttf"]
+fallback = ["/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.ttf"]
+emoji = ["/usr/share/fonts/noto/NotoColorEmoji.ttf"]
+cjk = [
+  "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Regular.otf",
+  "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+]
 ```
 
 ## Options
@@ -87,3 +99,23 @@ Colors are specified as `0xAARRGGBB` hex integers.
 | `input_h` | `u32` | `45` | Height of the search input area |
 | `pad_x` | `u32` | `16` | Horizontal padding inside the window |
 | `input_letter_spacing` | `f32` | `0.5` | Extra spacing between typed characters |
+
+### `[clipboard]`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `history_limit` | `usize` | `50` | Maximum number of clipboard entries the daemon holds in memory and shows in `luncher -m clipboard`. Lowering this only affects what the UI displays — the on-disk `SQLite` history is still trimmed to a hard cap of `1000` entries. |
+
+### `[font]`
+
+Each field is a list of `.ttf` / `.otf` / `.ttc` paths. The renderer tries
+them in order and uses the first one that opens. If every configured path
+fails, the built-in defaults are tried as a fallback. The primary font is
+required — startup panics if no candidate opens.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `primary` | `[String]` | `["/usr/share/fonts/noto/NotoSans-Regular.ttf"]` | Main text font. |
+| `fallback` | `[String]` | `["/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.ttf"]` | Used for glyphs missing in the primary font (and the emoji font). |
+| `emoji` | `[String]` | `["/usr/share/fonts/noto/NotoColorEmoji.ttf"]` | Color-emoji font, tried between primary and fallback. |
+| `cjk` | `[String]` | Source Han Sans CN, then Noto Sans CJK | Tried last for CJK code points. |

@@ -77,7 +77,50 @@ case_sensitive = false
 [window]
 width = 1200
 height = 800
+
+[clipboard]
+# Maximum number of clipboard entries kept in memory and shown in the UI.
+history_limit = 50
+
+[font]
+# Paths to .ttf/.otf/.ttc font files. The first entry that opens successfully
+# is used; remaining entries are skipped. If none of the configured paths
+# open, the built-in defaults are tried before the renderer panics.
+primary = ["/usr/share/fonts/noto/NotoSans-Regular.ttf"]
+fallback = ["/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.ttf"]
+emoji = ["/usr/share/fonts/noto/NotoColorEmoji.ttf"]
+cjk = [
+  "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Regular.otf",
+  "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+]
 ```
+
+### Clipboard
+
+The `[clipboard]` section controls the clipboard history mode.
+
+- `history_limit` (`usize`, default `50`) — caps how many entries the daemon
+  holds and how many are returned to the UI when `luncher -m clipboard` opens.
+  The on-disk `SQLite` history is independently trimmed to a hard cap of `1000`
+  entries regardless of this setting, so lowering `history_limit` only affects
+  what the UI displays, not what is persisted.
+
+### Fonts
+
+The `[font]` section controls which font files the renderer uses. Each field
+is a list of paths; the renderer tries them in order and uses the first one
+that opens successfully. If every configured path fails, the built-in defaults
+are tried as a fallback. The primary font is required — the renderer will
+panic at startup if no candidate can be opened.
+
+- `primary` (`[String]`, default `["/usr/share/fonts/noto/NotoSans-Regular.ttf"]`)
+  — the main text font.
+- `fallback` (`[String]`, default `["/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.ttf"]`)
+  — consulted for glyphs the primary font does not contain.
+- `emoji` (`[String]`, default `["/usr/share/fonts/noto/NotoColorEmoji.ttf"]`)
+  — color-emoji font, tried between primary and fallback.
+- `cjk` (`[String]`, default Source Han Sans CN, then Noto Sans CJK)
+  — tried last for CJK code points.
 
 ### Scripts Example
 

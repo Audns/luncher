@@ -116,7 +116,7 @@ impl AppState {
         let mut search = FuzzySearch::new(items, case_sensitive);
         search.update("");
 
-        let renderer = Renderer::new(phys_w, phys_h, scale, cfg.theme, cfg.layout);
+        let renderer = Renderer::new(phys_w, phys_h, scale, cfg.theme, cfg.layout, &cfg.font);
         let visible = renderer.max_visible_rows as usize;
 
         Self {

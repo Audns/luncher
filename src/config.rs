@@ -23,6 +23,9 @@ pub struct Config {
     pub layout: LayoutConfig,
 
     #[serde(default)]
+    pub font: FontConfig,
+
+    #[serde(default)]
     pub clipboard: ClipboardConfig,
 }
 
@@ -137,6 +140,7 @@ impl Default for Config {
             case_sensitive: default_false(),
             theme: ThemeConfig::default(),
             layout: LayoutConfig::default(),
+            font: FontConfig::default(),
             clipboard: ClipboardConfig::default(),
         }
     }
@@ -146,6 +150,32 @@ impl Default for Config {
 pub struct ClipboardConfig {
     #[serde(default = "default_history_limit")]
     pub history_limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FontConfig {
+    #[serde(default = "default_primary_font_paths")]
+    pub primary: Vec<String>,
+
+    #[serde(default = "default_fallback_font_paths")]
+    pub fallback: Vec<String>,
+
+    #[serde(default = "default_emoji_font_paths")]
+    pub emoji: Vec<String>,
+
+    #[serde(default = "default_cjk_font_paths")]
+    pub cjk: Vec<String>,
+}
+
+impl Default for FontConfig {
+    fn default() -> Self {
+        Self {
+            primary: default_primary_font_paths(),
+            fallback: default_fallback_font_paths(),
+            emoji: default_emoji_font_paths(),
+            cjk: default_cjk_font_paths(),
+        }
+    }
 }
 
 impl Default for ClipboardConfig {
@@ -186,7 +216,26 @@ impl Scripts {
 }
 
 fn default_history_limit() -> usize {
-    50
+    200
+}
+
+fn default_primary_font_paths() -> Vec<String> {
+    vec!["/usr/share/fonts/noto/NotoSans-Regular.ttf".to_string()]
+}
+
+fn default_fallback_font_paths() -> Vec<String> {
+    vec!["/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.ttf".to_string()]
+}
+
+fn default_emoji_font_paths() -> Vec<String> {
+    vec!["/usr/share/fonts/noto/NotoColorEmoji.ttf".to_string()]
+}
+
+fn default_cjk_font_paths() -> Vec<String> {
+    vec![
+        "/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Regular.otf".to_string(),
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc".to_string(),
+    ]
 }
 
 fn default_font_size() -> f32 {
